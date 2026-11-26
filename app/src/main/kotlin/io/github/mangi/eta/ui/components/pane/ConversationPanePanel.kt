@@ -129,6 +129,7 @@ internal fun ConversationPanePanel(
     onOpenSkills: () -> Unit,
     onOpenScheduledTasks: () -> Unit = {},
     onOpenCharacters: () -> Unit,
+    onOpenWriting: () -> Unit,
     onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -194,6 +195,7 @@ internal fun ConversationPanePanel(
                                         activeModelLabel = activeModelLabel,
                                         onOpenModelProviders = onOpenModelProviders,
                                         onOpenCharacters = onOpenCharacters,
+                                        onOpenWriting = onOpenWriting,
                                         onOpenTools = onOpenTools,
                                         onOpenSkills = onOpenSkills,
                                         onOpenScheduledTasks = onOpenScheduledTasks,
@@ -289,6 +291,7 @@ private fun PaneWorkbenchSection(
     activeModelLabel: String?,
     onOpenModelProviders: () -> Unit,
     onOpenCharacters: () -> Unit,
+    onOpenWriting: () -> Unit,
     onOpenTools: () -> Unit,
     onOpenSkills: () -> Unit,
     onOpenScheduledTasks: () -> Unit = {},
@@ -306,6 +309,11 @@ private fun PaneWorkbenchSection(
             icon = MiuixIcons.Glass.Contacts,
             title = stringResource(R.string.conversation_dock_characters),
             onClick = onOpenCharacters,
+        ),
+        WorkbenchEntry(
+            icon = MiuixIcons.Glass.BookOutline,
+            title = stringResource(R.string.conversation_dock_writing),
+            onClick = onOpenWriting,
         ),
         WorkbenchEntry(
             icon = MiuixIcons.Glass.GridView,

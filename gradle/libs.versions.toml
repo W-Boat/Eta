@@ -31,6 +31,8 @@ commonsCompress = "1.28.0"
 xz = "1.12"
 
 [libraries]
+markwon-editor = { module = "io.noties.markwon:editor", version = "4.6.2" }
+markwon-core = { module = "io.noties.markwon:core", version = "4.6.2" }
 kotlin-gradle-plugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 commons-compress = { group = "org.apache.commons", name = "commons-compress", version.ref = "commonsCompress" }
 xz = { group = "org.tukaani", name = "xz", version.ref = "xz" }

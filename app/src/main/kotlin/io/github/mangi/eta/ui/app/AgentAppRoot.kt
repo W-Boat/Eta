@@ -80,6 +80,11 @@ import io.github.mangi.eta.agent.browser.BrowserSessionRegistry
 import io.github.mangi.eta.ui.screens.characters.CharacterDetailScreen
 import io.github.mangi.eta.ui.screens.characters.CharacterEditorScreen
 import io.github.mangi.eta.ui.screens.characters.CharacterLibraryScreen
+import io.github.mangi.eta.ui.screens.writing.WritingShelfScreen
+import io.github.mangi.eta.ui.screens.writing.WritingBookScreen
+import io.github.mangi.eta.ui.screens.writing.WritingChapterScreen
+import io.github.mangi.eta.ui.screens.writing.WritingDeskScreen
+import io.github.mangi.eta.ui.screens.writing.WritingViewModel
 import io.github.mangi.eta.ui.screens.characters.CharacterMemoryScreen
 import io.github.mangi.eta.ui.screens.characters.CharacterPersonaScreen
 import io.github.mangi.eta.ui.screens.enhance.SystemEnhanceScreen
@@ -175,6 +180,7 @@ fun AgentAppRoot(
     val configuration = LocalConfiguration.current
     val toolsState = remember(configuration) { buildToolsState(context) }
     val characterStore = viewModel<CharacterLibraryViewModel>().store
+    val writing = viewModel<WritingViewModel>()
     val communityCatalogStore = viewModel<CommunityCatalogViewModel>().store
     val requestExecutionNotifications = rememberExecutionNotificationRequest()
     val requestLocalNetworkPermission = rememberLocalNetworkPermissionRequest(permissionHealth::refreshPermissionHealth)
@@ -368,6 +374,7 @@ fun AgentAppRoot(
             onOpenSkills = { pushRoute(AppRoute.Skills) },
             onOpenScheduledTasks = { pushRoute(AppRoute.ScheduledTasks) },
             onOpenCharacters = { pushRoute(AppRoute.Characters) },
+            onOpenWriting = { pushRoute(AppRoute.WritingShelf) },
             onOpenPermissions = { pushRoute(AppRoute.Permissions) },
             onOpenSettings = { pushRoute(AppRoute.Settings) },
             onOpenModelProviders = { pushRoute(AppRoute.ModelProviders) },
@@ -558,6 +565,18 @@ fun AgentAppRoot(
                             characterStore.loadLibrary()
                         }
                         CharacterLibraryScreen(characterStore, { if (navigator.current() == AppRoute.Characters) pushRoute(it) }, ::popRoute)
+                    }
+                    entry<AppRoute.WritingShelf>(swipeDismiss = activeSwipeDismiss) {
+                        WritingShelfScreen(writing, { pushRoute(it) }, ::popRoute)
+                    }
+                    entry<AppRoute.WritingBook>(swipeDismiss = activeSwipeDismiss) { route ->
+                        WritingBookScreen(writing, route.bookId, { pushRoute(it) }, ::popRoute)
+                    }
+                    entry<AppRoute.WritingChapter>(swipeDismiss = activeSwipeDismiss) { route ->
+                        WritingChapterScreen(writing, route.bookId, route.chapterId, { pushRoute(it) }, ::popRoute)
+                    }
+                    entry<AppRoute.WritingDesk>(swipeDismiss = activeSwipeDismiss) { route ->
+                        WritingDeskScreen(writing, route.bookId, { pushRoute(it) }, ::popRoute)
                     }
                     entry<AppRoute.CharacterDetail>(swipeDismiss = activeSwipeDismiss) { route ->
                         LaunchedEffect(route.characterId) {

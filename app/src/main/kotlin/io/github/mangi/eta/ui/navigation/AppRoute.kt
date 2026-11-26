@@ -55,6 +55,18 @@ sealed interface AppRoute : NavKey {
     data object Characters : AppRoute
 
     @Serializable
+    data object WritingShelf : AppRoute
+
+    @Serializable
+    data class WritingBook(val bookId: String) : AppRoute
+
+    @Serializable
+    data class WritingChapter(val bookId: String, val chapterId: String) : AppRoute
+
+    @Serializable
+    data class WritingDesk(val bookId: String) : AppRoute
+
+    @Serializable
     data class CharacterDetail(val characterId: String) : AppRoute
 
     @Serializable

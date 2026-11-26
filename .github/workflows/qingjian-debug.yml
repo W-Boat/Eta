@@ -1,0 +1,43 @@
+name: Qingjian Android
+
+on:
+  push:
+    branches:
+      - feature/qingjian-studio
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qingjian-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    name: Build Qingjian Debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: 配置构建环境
+        uses: ./.github/actions/setup-build
+
+      - name: 编译并测试
+        run: >-
+          ./gradlew --no-daemon --no-configuration-cache
+          "-Peta.buildMetadata=${GITHUB_SHA::7}"
+          :app:assembleDebug :app:testDebugUnitTest
+
+      - name: 上传 Debug APK
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Qingjian-Android-Debug
+          path: app/build/outputs/apk/debug/Eta-v*.apk
+          if-no-files-found: error
+          retention-days: 14

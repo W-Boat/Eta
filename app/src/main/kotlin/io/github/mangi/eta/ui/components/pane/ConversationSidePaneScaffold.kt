@@ -86,6 +86,7 @@ fun ConversationSidePaneScaffold(
     onOpenSkills: () -> Unit,
     onOpenScheduledTasks: () -> Unit = {},
     onOpenCharacters: () -> Unit,
+    onOpenWriting: () -> Unit,
     onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
     activeModelLabel: String? = null,
@@ -241,6 +242,7 @@ fun ConversationSidePaneScaffold(
                         onOpenSkills = onOpenSkills,
                         onOpenScheduledTasks = onOpenScheduledTasks,
                         onOpenCharacters = onOpenCharacters,
+                        onOpenWriting = onOpenWriting,
                         onOpenPermissions = onOpenPermissions,
                         modifier = Modifier
                             .focusProperties { onEnter = { if (!isRevealed) cancelFocusChange() } }
