@@ -86,7 +86,7 @@ fun ConversationSidePaneScaffold(
     onOpenSkills: () -> Unit,
     onOpenScheduledTasks: () -> Unit = {},
     onOpenCharacters: () -> Unit,
-    onOpenWriting: () -> Unit,
+    onOpenWriting: () -> Unit = {},
     onOpenPermissions: () -> Unit,
     modifier: Modifier = Modifier,
     activeModelLabel: String? = null,

@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -46,7 +47,7 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
 
     init {
         viewModelScope.launch {
-            var saved = try {
+            val initial = try {
                 withContext(Dispatchers.IO) { files.readAll() }
             } catch (failure: Exception) {
                 if (failure is CancellationException) throw failure
@@ -54,19 +55,25 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
                 loading = false
                 return@launch
             }
-            books = saved
+            val saved = initial.associateBy { it.id }.toMutableMap()
+            books = initial
             ready = true
             loading = false
             for (signal in changed) {
+                delay(150)
                 val snapshot = books
                 try {
                     withContext(Dispatchers.IO) {
-                        val previous = saved.associateBy { it.id }
-                        snapshot.filter { previous[it.id] !== it }.forEach(files::save)
+                        snapshot.filter { saved[it.id] !== it }.forEach { book ->
+                            files.save(book)
+                            saved[book.id] = book
+                        }
                         val currentIds = snapshot.mapTo(hashSetOf()) { it.id }
-                        previous.keys.filterNot(currentIds::contains).forEach(files::delete)
+                        saved.keys.filterNot(currentIds::contains).forEach { id ->
+                            files.delete(id)
+                            saved.remove(id)
+                        }
                     }
-                    saved = snapshot
                     if (books === snapshot) saving = false
                 } catch (failure: Exception) {
                     if (failure is CancellationException) throw failure

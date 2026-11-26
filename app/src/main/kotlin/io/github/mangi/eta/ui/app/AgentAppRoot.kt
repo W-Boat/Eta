@@ -573,7 +573,7 @@ fun AgentAppRoot(
                         WritingBookScreen(writing, route.bookId, { pushRoute(it) }, ::popRoute)
                     }
                     entry<AppRoute.WritingChapter>(swipeDismiss = activeSwipeDismiss) { route ->
-                        WritingChapterScreen(writing, route.bookId, route.chapterId, { pushRoute(it) }, ::popRoute)
+                        WritingChapterScreen(writing, route.bookId, route.chapterId, route.paragraphOffset, { pushRoute(it) }, ::popRoute)
                     }
                     entry<AppRoute.WritingDesk>(swipeDismiss = activeSwipeDismiss) { route ->
                         WritingDeskScreen(writing, route.bookId, { pushRoute(it) }, ::popRoute)

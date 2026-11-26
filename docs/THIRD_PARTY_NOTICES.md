@@ -38,6 +38,10 @@ DexKit 的 JVM 接口等非 `Core/` 代码采用 [Apache License 2.0](https://gi
 
 Eta 的功能图标使用 AndroidX Compose Material Icons 的 Rounded 系列，通过 `material-icons-extended` 依赖提供。图标及其 AndroidX 实现采用 [Apache License 2.0](https://github.com/androidx/androidx/blob/androidx-main/LICENSE.txt)，来源见 [Material Design Icons](https://github.com/google/material-design-icons)。
 
+## Markwon
+
+青简使用 [Markwon](https://github.com/noties/Markwon) 的 Android 原生 Markdown 编辑器和预览。Markwon 使用 [Apache License 2.0](https://github.com/noties/Markwon/blob/master/LICENSE)，其 CommonMark 解析器采用 [BSD 2-Clause License](https://github.com/commonmark/commonmark-java/blob/main/LICENSE.txt)。
+
 ## 应用图标
 
 Eta 的应用图标取材自 Google [AI Edge Gallery](https://github.com/google-ai-edge/gallery) 的应用图标，转换为 VectorDrawable 并保留安全留白，通知图标为其单色变体。AI Edge Gallery 采用 [Apache License 2.0](https://github.com/google-ai-edge/gallery/blob/main/LICENSE)。

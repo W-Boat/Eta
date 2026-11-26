@@ -4,12 +4,15 @@ import android.graphics.Color as AndroidColor
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.InputType
+import android.text.Spanned
+import android.text.SpannedString
 import android.text.TextWatcher
 import android.view.Gravity
 import android.widget.EditText
 import android.widget.TextView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -53,6 +57,7 @@ import java.util.Date
 import java.util.concurrent.Executors
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -64,13 +69,21 @@ internal fun WritingChapterScreen(
     state: WritingViewModel,
     bookId: String,
     chapterId: String,
+    paragraphOffset: Int?,
     navigate: (AppRoute) -> Unit,
     back: () -> Unit,
 ) {
     val book = state.book(bookId)
     val chapter = book?.chapter(chapterId)
-    var pane by rememberSaveable(chapterId) { mutableStateOf(ChapterPane.Text) }
+    var pane by rememberSaveable(chapterId) { mutableStateOf<ChapterPane?>(null) }
+    val activePane = pane ?: when {
+        paragraphOffset != null -> ChapterPane.Paragraphs
+        book?.aiMode == true && chapter?.text.isNullOrBlank() -> ChapterPane.AI
+        else -> ChapterPane.Text
+    }
     var settings by rememberSaveable { mutableStateOf(false) }
+    var moving by rememberSaveable { mutableStateOf(false) }
+    var deleting by rememberSaveable { mutableStateOf(false) }
     var instruction by rememberSaveable(chapterId) { mutableStateOf("") }
     var selected by remember(chapterId) { mutableStateOf(emptySet<WritingAnchor>()) }
     var feedback by remember(chapterId) { mutableStateOf<WritingAnchor?>(null) }
@@ -78,6 +91,10 @@ internal fun WritingChapterScreen(
     var selectedVersion by remember { mutableStateOf<WritingVersion?>(null) }
     var source by rememberSaveable { mutableStateOf(false) }
     var preview by rememberSaveable { mutableStateOf(false) }
+    var livePreview by rememberSaveable { mutableStateOf(false) }
+    val paragraphList = rememberLazyListState()
+    val paragraphs = remember(chapterId, chapter?.text) { chapter?.let(::writingParagraphs).orEmpty() }
+    val otherList = rememberLazyListState()
     val history = remember(chapterId) { WritingUndo() }
     var selection by remember(chapterId) { mutableStateOf(IntRange.EMPTY) }
     var requestedCursor by remember(chapterId) { mutableStateOf<Int?>(null) }
@@ -116,11 +133,11 @@ internal fun WritingChapterScreen(
                     TextButton(
                         text = tab.label,
                         onClick = { pane = tab },
-                        colors = if (pane == tab) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
+                        colors = if (activePane == tab) ButtonDefaults.textButtonColorsPrimary() else ButtonDefaults.textButtonColors(),
                     )
                 }
             }
-            if (pane == ChapterPane.Text) {
+            if (activePane == ChapterPane.Text) {
                 WritingNotice(state)
                 val words = remember(original) { writingWordCount(original) }
                 val goal = chapter.goal ?: book.goal
@@ -131,6 +148,7 @@ internal fun WritingChapterScreen(
                 }
                 WritingActions {
                     TextButton(if (preview) "返回编辑" else "预览", onClick = { preview = !preview })
+                    TextButton(if (livePreview) "关闭同屏" else "同屏预览", enabled = !preview, onClick = { livePreview = !livePreview })
                     TextButton(if (source) "高亮" else "源码", enabled = !preview, onClick = { source = !source })
                     TextButton("场景线", enabled = !preview, onClick = {
                         val insertion = "\n\n---\n\n"
@@ -144,10 +162,9 @@ internal fun WritingChapterScreen(
                 }
                 Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp, vertical = 6.dp),
                     contentAlignment = Alignment.TopCenter) {
-                    Card(Modifier.widthIn(max = book.width.dp).fillMaxWidth().fillMaxSize()) {
-                        if (preview) {
-                            WritingMarkdown(original, Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp))
-                        } else {
+                    Card(Modifier.widthIn(max = if (livePreview && !preview) (book.width * 2).dp else book.width.dp)
+                        .fillMaxWidth().fillMaxSize()) {
+                        val editor: @Composable (Modifier) -> Unit = { editorModifier ->
                             WritingMarkdownEditor(
                                 text = original,
                                 source = source,
@@ -158,8 +175,31 @@ internal fun WritingChapterScreen(
                                     history.record(previous, group = true)
                                     editText(next)
                                 },
-                                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                                modifier = editorModifier.padding(horizontal = 12.dp),
                             )
+                        }
+                        val rendered: @Composable (Modifier) -> Unit = { previewModifier ->
+                            WritingMarkdown(original, previewModifier.verticalScroll(rememberScrollState()).padding(14.dp))
+                        }
+                        if (preview) {
+                            rendered(Modifier.fillMaxSize())
+                        } else if (livePreview) {
+                            BoxWithConstraints(Modifier.fillMaxSize()) {
+                                if (maxWidth >= 620.dp) {
+                                    Row(Modifier.fillMaxSize()) {
+                                        editor(Modifier.weight(1f).fillMaxSize())
+                                        rendered(Modifier.weight(1f).fillMaxSize())
+                                    }
+                                } else {
+                                    Column(Modifier.fillMaxSize()) {
+                                        editor(Modifier.weight(1.6f).fillMaxWidth())
+                                        HorizontalDivider()
+                                        rendered(Modifier.weight(1f).fillMaxWidth())
+                                    }
+                                }
+                            }
+                        } else {
+                            editor(Modifier.fillMaxSize())
                         }
                     }
                 }
@@ -167,10 +207,11 @@ internal fun WritingChapterScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     contentPadding = PaddingValues(bottom = 20.dp),
+                    state = if (activePane == ChapterPane.Paragraphs) paragraphList else otherList,
                 ) {
                     item { WritingNotice(state) }
                     writingGeneration(state)
-                    when (pane) {
+                    when (activePane) {
                         ChapterPane.AI -> {
                             item("plan") {
                                 WritingSection {
@@ -205,6 +246,7 @@ internal fun WritingChapterScreen(
                                     history.record(externalText, group = false)
                                     externalText = updated
                                 }
+                                if (candidate.task == WritingTask.Draft && updated != original) pane = ChapterPane.Text
                             }, onReject = { state.review(bookId, chapterId, null) }, onRetry = {
                                 state.generate(bookId, chapterId, it.task, it.instruction, it.targets)
                             })
@@ -229,7 +271,7 @@ internal fun WritingChapterScreen(
                                         })
                                 }
                             }
-                            items(writingParagraphs(chapter), key = { it.offset }) { paragraph ->
+                            items(paragraphs, key = { it.offset }) { paragraph ->
                                 WritingSection {
                                     Text(paragraph.quote, maxLines = 6, overflow = TextOverflow.Ellipsis)
                                     val note = chapter.feedback.firstOrNull { it.anchor.locate(original) == paragraph.offset }
@@ -264,6 +306,12 @@ internal fun WritingChapterScreen(
                         ChapterPane.Text -> Unit
                     }
                 }
+                LaunchedEffect(paragraphOffset, activePane, paragraphs) {
+                    if (activePane == ChapterPane.Paragraphs && paragraphOffset != null) {
+                        val index = paragraphs.indexOfFirst { paragraphOffset in it.offset until it.offset + it.quote.length }
+                        if (index >= 0) paragraphList.scrollToItem(index + if (state.generating == null) 2 else 3)
+                    }
+                }
             }
         }
     }
@@ -276,7 +324,33 @@ internal fun WritingChapterScreen(
     }, openDesk = {
         settings = false
         navigate(AppRoute.WritingDesk(bookId))
+    }, move = {
+        settings = false
+        moving = true
+    }, delete = {
+        settings = false
+        deleting = true
     })
+    if (moving) WritingDialog("移动章节", { moving = false }) {
+        book.volumes.filter { volume -> volume.chapters.none { it.id == chapterId } }.forEach { volume ->
+            WritingEntry(volume.title) {
+                state.edit(bookId) { it.moveChapter(chapterId, volume.id) }
+                moving = false
+            }
+        }
+    }
+    if (deleting) WritingDialog("删除「${chapter.title}」", { deleting = false }) {
+        WritingCaption("正文、历史版本和章内批注将一同删除。资料库会保留相关伏笔。")
+        DialogActions("删除", { deleting = false }, {
+            state.edit(bookId) { current ->
+                if (current.chapters.size <= 1) current else current.copy(volumes = current.volumes.map { volume ->
+                    volume.copy(chapters = volume.chapters.filterNot { it.id == chapterId })
+                })
+            }
+            deleting = false
+            back()
+        }, destructive = true, confirmEnabled = book.chapters.size > 1)
+    }
     feedback?.let { anchor ->
         WritingFeedbackDialog(book, chapter, anchor, dismiss = { feedback = null }, save = { note, foreshadowId, newTitle ->
             state.edit(bookId) { current ->
@@ -405,7 +479,7 @@ internal fun WritingMarkdown(text: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val markwon = remember(context) { Markwon.create(context) }
     val foreground = MiuixTheme.colorScheme.onSurface.toArgb()
-    var rendered by remember { mutableStateOf<CharSequence>("") }
+    var rendered by remember { mutableStateOf<Spanned>(SpannedString("")) }
     LaunchedEffect(text, markwon) {
         rendered = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { markwon.toMarkdown(text) }
     }

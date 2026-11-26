@@ -83,6 +83,8 @@ internal fun WritingChapterSettings(
     dismiss: () -> Unit,
     save: (String, Int?, Int) -> Unit,
     openDesk: () -> Unit,
+    move: () -> Unit,
+    delete: () -> Unit,
 ) {
     var title by rememberSaveable { mutableStateOf(chapter.title) }
     var goal by rememberSaveable { mutableStateOf(chapter.goal?.toString().orEmpty()) }
@@ -91,7 +93,11 @@ internal fun WritingChapterSettings(
         SettingsTextField("章名", title) { title = it }
         SettingsTextField("章节字数目标（留空使用全书默认值）", goal) { goal = it }
         SettingsTextField("正文最大宽度（280–1200 dp）", width) { width = it }
-        TextButton("打开创作工作台", onClick = openDesk)
+        WritingActions {
+            TextButton("打开创作工作台", onClick = openDesk)
+            if (book.volumes.size > 1) TextButton("移动章节", onClick = move)
+            if (book.chapters.size > 1) TextButton("删除章节", onClick = delete)
+        }
         val targetWidth = width.toIntOrNull()?.takeIf { it in 280..1200 }
         val targetGoal = goal.toIntOrNull()?.takeIf { it >= 0 }
         DialogActions(

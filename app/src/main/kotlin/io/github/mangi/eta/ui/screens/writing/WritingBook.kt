@@ -178,3 +178,13 @@ internal fun applyWritingChanges(text: String, candidate: WritingCandidate): Str
     }
     return revised.toString()
 }
+
+internal fun WritingBook.moveChapter(chapterId: String, targetVolumeId: String): WritingBook {
+    val chapter = chapter(chapterId) ?: return this
+    val target = volumes.firstOrNull { it.id == targetVolumeId } ?: return this
+    if (target.chapters.any { it.id == chapterId }) return this
+    return copy(volumes = volumes.map { volume ->
+        if (volume.id == targetVolumeId) volume.copy(chapters = volume.chapters + chapter)
+        else volume.copy(chapters = volume.chapters.filterNot { it.id == chapterId })
+    })
+}

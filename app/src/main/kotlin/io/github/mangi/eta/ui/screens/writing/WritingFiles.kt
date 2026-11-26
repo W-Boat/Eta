@@ -43,7 +43,11 @@ internal class WritingFiles(private val directory: File) {
         }
     }
 
-    fun delete(id: String) = file(id).delete()
+    fun delete(id: String) {
+        val file = file(id)
+        file.delete()
+        check(!file.baseFile.exists())
+    }
 
     private fun file(id: String): AtomicFile {
         require(id.matches(Regex("[A-Fa-f0-9-]{36}")))

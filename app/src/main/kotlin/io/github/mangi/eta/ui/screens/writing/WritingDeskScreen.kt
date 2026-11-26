@@ -72,6 +72,12 @@ internal fun WritingDeskScreen(state: WritingViewModel, bookId: String, navigate
                             TextButton("AI 用量", onClick = { showUsage = true })
                         }
                         WritingCaption(if (book.aiMode) "当前为 AI 驱动 · 先确认摘要，再生成初稿。" else "当前为人类主笔 · 可随时生成和审阅改稿候选。")
+                        WritingEntry("AI 模型", "使用 ETA 当前选中的模型和账号") {
+                            navigate(AppRoute.ModelProviders)
+                        }
+                        WritingEntry("角色扮演", "角色卡、玩家人设和角色世界书") {
+                            navigate(AppRoute.Characters)
+                        }
                     }
                 }
                 item("outline") {
@@ -208,7 +214,7 @@ internal fun WritingDeskScreen(state: WritingViewModel, bookId: String, navigate
             materialId = null
         }, jump = {
             materialId = null
-            navigate(AppRoute.WritingChapter(bookId, it.chapterId))
+            navigate(AppRoute.WritingChapter(bookId, it.chapterId, book.chapter(it.chapterId)?.let { chapter -> it.locate(chapter.text) }))
         })
 }
 
