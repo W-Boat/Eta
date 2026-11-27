@@ -45,6 +45,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -239,7 +241,7 @@ internal fun WritingChapterScreen(
             Box(Modifier.fillMaxSize().padding(start = startInset, end = endInset), contentAlignment = Alignment.TopCenter) {
                 val editorWidth = if (livePreview && !preview) (book.width * 2).dp else book.width.dp
                 Row(Modifier.widthIn(max = editorWidth).fillMaxSize()) {
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                    Box(Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = "正文编辑器" }) {
                         key(chapterId) {
                             val markers = if (selecting) paragraphs.map { ManuscriptMarker(it.offset, it in picked) }
                             else pending.filter { it.decision == ParagraphDecision.Pending }.distinctBy { it.anchor.offset }

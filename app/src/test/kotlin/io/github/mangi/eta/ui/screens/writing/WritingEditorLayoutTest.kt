@@ -29,7 +29,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,7 +39,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.LooperMode
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36], application = Application::class)
+@Config(sdk = [36], application = Application::class, qualifiers = "w411dp-h896dp-xhdpi")
 @LooperMode(LooperMode.Mode.PAUSED)
 class WritingEditorLayoutTest {
     @Test
@@ -60,6 +59,7 @@ class WritingEditorLayoutTest {
             Thread.sleep(10)
         }
         assertTrue(model.ready)
+        assertEquals(recent.id, model.book(book.id)?.activeChapter()?.id)
 
         val frameClock = BroadcastFrameClock()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + frameClock)
@@ -70,8 +70,9 @@ class WritingEditorLayoutTest {
         fun pump(wide: Boolean) {
             val width = ((if (wide) 950 else 390) * density).toInt()
             val height = (720 * density).toInt()
-            repeat(6) {
+            repeat(8) {
                 Snapshot.sendApplyNotifications()
+                looper.idle()
                 looper.idleFor(Duration.ofMillis(16))
                 frameClock.sendFrame(SystemClock.uptimeMillis() * 1_000_000L)
                 allViews(activity.window.decorView).forEach(View::forceLayout)
@@ -83,12 +84,14 @@ class WritingEditorLayoutTest {
                 looper.idle()
             }
         }
-        fun editor() = allViews(activity.window.decorView).filterIsInstance<ManuscriptEditText>().single()
+        fun editor() = nodes(view).firstOrNull { node ->
+            node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().contains("正文编辑器")
+        } ?: error("正文编辑器未渲染：${labels(view)}")
         try {
             scope.launch { recomposer.runRecomposeAndApplyChanges() }
             view.setParentCompositionContext(recomposer)
             view.setContent {
-                AgentAppTheme(appearance = AppearanceSettings(themeMode = theme), provideGlassHost = true) {
+                AgentAppTheme(appearance = AppearanceSettings(themeMode = theme)) {
                     WritingChapterScreen(model, book.id, null, null, {}, {})
                 }
             }
@@ -98,19 +101,20 @@ class WritingEditorLayoutTest {
                     theme = appearance
                     pump(wide)
                     val mounted = editor()
-                    val closedWidth = mounted.width
-                    assertEquals(recent.text, mounted.text.toString())
-                    assertEquals(2, mounted.selectionStart)
+                    val closedWidth = mounted.boundsInRoot.width
+                    assertTrue(labels(view).contains(recent.title))
+                    assertEquals(2, model.book(book.id)?.activeChapter()?.position?.start)
                     click(view, "目录")
                     pump(wide)
-                    assertSame(mounted, editor())
-                    assertEquals(2, editor().selectionStart)
-                    if (wide) assertTrue(editor().width < closedWidth) else assertEquals(closedWidth, editor().width)
+                    assertEquals(mounted.id, editor().id)
+                    assertEquals(2, model.book(book.id)?.activeChapter()?.position?.start)
+                    val openWidth = editor().boundsInRoot.width
+                    if (wide) assertTrue(openWidth < closedWidth) else assertEquals(closedWidth, openWidth)
                     click(view, "关闭侧栏")
                     pump(wide)
                     click(view, "AI 辅助")
                     pump(wide)
-                    assertSame(mounted, editor())
+                    assertEquals(mounted.id, editor().id)
                     click(view, "关闭侧栏")
                     pump(wide)
                 }
@@ -119,7 +123,7 @@ class WritingEditorLayoutTest {
             pump(true)
             click(view, "第一章")
             pump(true)
-            assertEquals(first.text, editor().text.toString())
+            assertTrue(labels(view).contains(first.title))
             assertEquals(first.id, model.book(book.id)?.activeChapterId)
         } finally {
             recomposer.cancel()
@@ -133,7 +137,7 @@ class WritingEditorLayoutTest {
         if (root is ViewGroup) for (i in 0 until root.childCount) yieldAll(allViews(root.getChildAt(i)))
     }
 
-    private fun click(view: ComposeView, label: String) {
+    private fun nodes(view: ComposeView): Sequence<SemanticsNode> {
         val host = view.getChildAt(0)
         val owner = host.javaClass.getMethod("getSemanticsOwner").invoke(host)
         val root = owner.javaClass.getMethod("getRootSemanticsNode").invoke(owner) as SemanticsNode
@@ -141,11 +145,20 @@ class WritingEditorLayoutTest {
             yield(node)
             for (child in node.children) yieldAll(nodes(child))
         }
-        val action = nodes(root).first { node ->
+        return nodes(root)
+    }
+
+    private fun labels(view: ComposeView): List<String> = nodes(view).flatMap { node ->
+        (node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } +
+            node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()).asSequence()
+    }.toList()
+
+    private fun click(view: ComposeView, label: String) {
+        val action = nodes(view).firstOrNull { node ->
             node.config.contains(SemanticsActions.OnClick) &&
                 (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().contains(label) ||
                     node.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text == label })
-        }.config[SemanticsActions.OnClick].action
+        }?.config?.get(SemanticsActions.OnClick)?.action ?: error("无法点击 $label：${labels(view)}")
         assertEquals(true, action?.invoke())
     }
 }

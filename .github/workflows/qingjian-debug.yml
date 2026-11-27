@@ -27,11 +27,11 @@ jobs:
       - name: 配置构建环境
         uses: ./.github/actions/setup-build
 
-      - name: 编译并测试
+      - name: 编译 Debug APK
         run: >-
           ./gradlew --no-daemon --no-configuration-cache
           "-Peta.buildMetadata=${GITHUB_SHA::7}"
-          :app:assembleDebug :app:testDebugUnitTest
+          :app:assembleDebug
 
       - name: 核对 APK 安装包名
         run: |
@@ -42,10 +42,23 @@ jobs:
           "$aapt" dump badging "${apks[0]}" | grep -F "package: name='io.wboat.eta'"
 
       - name: 上传 Debug APK
-        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: Qingjian-Android-Debug
           path: app/build/outputs/apk/debug/Eta-v*.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: 运行单元测试
+        run: >-
+          ./gradlew --no-daemon --no-configuration-cache
+          "-Peta.buildMetadata=${GITHUB_SHA::7}"
+          :app:testDebugUnitTest
+
+      - name: 上传失败测试报告
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Qingjian-Test-Reports
+          path: app/build/test-results/testDebugUnitTest/
+          if-no-files-found: ignore
