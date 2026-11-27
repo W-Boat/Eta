@@ -1,3 +1,6 @@
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -142,8 +145,42 @@ android {
     }
 }
 
+abstract class BundleQingjianMuya : DefaultTask() {
+    @get:Internal
+    abstract val sourceDirectory: DirectoryProperty
+
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    val sources: FileTree
+        get() = sourceDirectory.get().asFileTree.matching {
+            include("package.json", "package-lock.json", "*.mjs", "*.js", "*.css", "*.html")
+            exclude("node_modules/**", "dist/**")
+        }
+
+    @get:OutputDirectory
+    abstract val destination: DirectoryProperty
+
+    @get:Inject
+    abstract val execOperations: ExecOperations
+
+    @TaskAction
+    fun bundle() {
+        val output = destination.get().asFile
+        execOperations.exec {
+            workingDir(sourceDirectory.get().asFile)
+            commandLine("node", "build.mjs", output.absolutePath, "--install")
+        }
+    }
+}
+
+val bundleQingjianMuya = tasks.register<BundleQingjianMuya>("bundleQingjianMuya") {
+    sourceDirectory.set(layout.projectDirectory.dir("src/main/muya"))
+    destination.set(layout.buildDirectory.dir("generated/qingjian/muyaAssets"))
+}
+
 androidComponents {
     onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(bundleQingjianMuya, BundleQingjianMuya::destination)
         // 文件名只取 versionName：构建类型标记与 CI 构建元数据都由 versionNameSuffix 带出
         variant.outputs.forEach { output ->
             output.outputFileName.set(output.versionName.map { "Eta-v$it.apk" })

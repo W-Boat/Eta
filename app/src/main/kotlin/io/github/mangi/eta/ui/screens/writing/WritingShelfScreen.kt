@@ -5,6 +5,7 @@ import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -35,15 +37,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.components.DialogActions
 import io.github.mangi.eta.ui.components.ListEmptyState
+import io.github.mangi.eta.ui.components.PreferenceGroupItem
 import io.github.mangi.eta.ui.components.ScaffoldPage
 import io.github.mangi.eta.ui.components.SettingsTextField
 import io.github.mangi.eta.ui.components.TopBarActionButton
@@ -53,6 +59,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
@@ -64,6 +71,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.glass.Add
 import top.yukonga.miuix.kmp.icon.glass.Import
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -115,29 +123,24 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { book ->
-                        Card(modifier = Modifier.weight(1f).clickable { openBook(book.id) }) {
-                            WritingCover(book, Modifier.fillMaxWidth().aspectRatio(0.92f))
-                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                WritingCaption(book.activeChapter()?.title.orEmpty())
-                            }
-                        }
+                        WritingBookTile(book, Modifier.weight(1f)) { openBook(book.id) }
                     }
                     if (row.size == 1) Box(Modifier.weight(1f))
                 }
             }
         } else {
-            items(books, key = { it.id }) { book ->
-                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
-                    .clickable { openBook(book.id) }) {
-                    Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+            itemsIndexed(books, key = { _, book -> book.id }) { index, book ->
+                PreferenceGroupItem(isFirst = index == 0, isLast = index == books.lastIndex) {
+                    Row(Modifier.fillMaxWidth().clickable { openBook(book.id) }.padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically) {
-                        WritingCover(book, Modifier.width(54.dp).aspectRatio(0.8f))
+                        WritingCover(book, Modifier.width(48.dp).aspectRatio(0.78f).squircleClip(10.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(book.title)
                             WritingCaption(book.activeChapter()?.title.orEmpty())
                         }
                     }
+                    if (index < books.lastIndex) HorizontalDivider(Modifier.padding(start = 76.dp, end = 14.dp))
                 }
             }
         }
@@ -165,6 +168,32 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
 }
 
 @Composable
+private fun WritingBookTile(book: WritingBook, modifier: Modifier, open: () -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    val hasCover = book.cover.startsWith("data:image/")
+    Box(modifier.aspectRatio(0.83f).squircleClip(22.dp).background(colors.surfaceContainerHigh).clickable(onClick = open)) {
+        WritingCover(book, Modifier.matchParentSize())
+        if (hasCover) {
+            Box(Modifier.matchParentSize().background(Brush.verticalGradient(
+                0.43f to Color.Transparent,
+                1f to Color.Black.copy(alpha = 0.76f),
+            )))
+        }
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(book.title, style = MiuixTheme.textStyles.body1, fontWeight = FontWeight.SemiBold,
+                color = if (hasCover) Color.White else colors.onSurface,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+            book.activeChapter()?.title?.let { title ->
+                Text(title, style = MiuixTheme.textStyles.footnote1,
+                    color = if (hasCover) Color.White.copy(alpha = 0.87f) else colors.onSurfaceVariantSummary,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
 internal fun WritingCover(book: WritingBook, modifier: Modifier) {
     val image by produceState<ImageBitmap?>(null, book.cover) {
         value = withContext(Dispatchers.IO) {
@@ -183,12 +212,10 @@ internal fun WritingCover(book: WritingBook, modifier: Modifier) {
     if (cover != null) {
         Image(cover, "《${book.title}》封面", modifier, contentScale = ContentScale.Crop)
     } else {
-        Card(modifier = modifier, colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(
-            color = MiuixTheme.colorScheme.primary.copy(alpha = 0.12f),
-        )) {
-            Box(Modifier.fillMaxWidth().aspectRatio(1f), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.AutoStories, null, tint = MiuixTheme.colorScheme.primary)
-            }
+        val colors = MiuixTheme.colorScheme
+        Box(modifier.background(Brush.verticalGradient(listOf(colors.primary.copy(alpha = 0.13f), colors.surfaceContainerHigh))),
+            contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.AutoStories, null, tint = colors.primary)
         }
     }
 }
@@ -201,7 +228,7 @@ internal fun WritingCaption(text: String) {
 @Composable
 internal fun WritingSection(content: @Composable ColumnScope.() -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
     }
 }
 

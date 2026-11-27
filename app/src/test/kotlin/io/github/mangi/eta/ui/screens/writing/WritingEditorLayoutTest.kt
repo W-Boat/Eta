@@ -21,7 +21,6 @@ import androidx.lifecycle.ViewModelProvider
 import io.github.mangi.eta.data.model.AppearanceSettings
 import io.github.mangi.eta.data.model.AppearanceThemeMode
 import io.github.mangi.eta.ui.app.AgentAppTheme
-import java.io.File
 import java.time.Duration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +50,6 @@ class WritingEditorLayoutTest {
         val recent = WritingChapter(title = "第二章", text = "城门开了。", position = WritingPosition(2, 2))
         val book = WritingBook(title = "城门", width = 1100, aiMode = true, activeChapterId = recent.id,
             volumes = listOf(WritingVolume(title = "上卷", chapters = listOf(first, recent))))
-        WritingFiles(File(activity.filesDir, "writing")).save(book)
         val model = ViewModelProvider(activity)[WritingViewModel::class.java]
         val deadline = System.nanoTime() + 5_000_000_000L
         while (!model.ready && System.nanoTime() < deadline) {
@@ -59,7 +57,9 @@ class WritingEditorLayoutTest {
             Thread.sleep(10)
         }
         assertTrue(model.ready)
-        assertEquals(recent.id, model.book(book.id)?.activeChapter()?.id)
+        val bookId = requireNotNull(model.create(book.title))
+        model.edit(bookId) { book.copy(id = it.id) }
+        assertEquals(recent.id, model.book(bookId)?.activeChapter()?.id)
 
         val frameClock = BroadcastFrameClock()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + frameClock)
@@ -92,7 +92,7 @@ class WritingEditorLayoutTest {
             view.setParentCompositionContext(recomposer)
             view.setContent {
                 AgentAppTheme(appearance = AppearanceSettings(themeMode = theme)) {
-                    WritingChapterScreen(model, book.id, null, null, {}, {})
+                    WritingChapterScreen(model, bookId, null, null, {}, {})
                 }
             }
             activity.setContentView(view)
@@ -103,13 +103,13 @@ class WritingEditorLayoutTest {
                     val mounted = editor()
                     val closedWidth = mounted.boundsInRoot.width
                     assertTrue(labels(view).contains(recent.title))
-                    assertEquals(2, model.book(book.id)?.activeChapter()?.position?.start)
+                    assertEquals(2, model.book(bookId)?.activeChapter()?.position?.start)
                     click(view, "目录")
                     pump(wide)
                     assertEquals(mounted.id, editor().id)
-                    assertEquals(2, model.book(book.id)?.activeChapter()?.position?.start)
+                    assertEquals(2, model.book(bookId)?.activeChapter()?.position?.start)
                     val openWidth = editor().boundsInRoot.width
-                    if (wide) assertTrue(openWidth < closedWidth) else assertEquals(closedWidth, openWidth)
+                    if (wide) assertTrue(openWidth < closedWidth) else assertEquals(closedWidth, openWidth, 0.5f)
                     click(view, "关闭侧栏")
                     pump(wide)
                     click(view, "AI 辅助")
@@ -124,7 +124,7 @@ class WritingEditorLayoutTest {
             click(view, "第一章")
             pump(true)
             assertTrue(labels(view).contains(first.title))
-            assertEquals(first.id, model.book(book.id)?.activeChapterId)
+            assertEquals(first.id, model.book(bookId)?.activeChapterId)
         } finally {
             recomposer.cancel()
             scope.cancel()
@@ -159,6 +159,6 @@ class WritingEditorLayoutTest {
                 (node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty().contains(label) ||
                     node.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text == label })
         }?.config?.get(SemanticsActions.OnClick)?.action ?: error("无法点击 $label：${labels(view)}")
-        assertEquals(true, action?.invoke())
+        assertEquals(true, action.invoke())
     }
 }

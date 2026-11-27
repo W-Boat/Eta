@@ -1,0 +1,14 @@
+{
+  "name": "qingjian-muya",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@muyajs/core": "0.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

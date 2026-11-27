@@ -6,6 +6,8 @@
 /.idea/
 
 # Gradle / Kotlin 构建缓存
+/app/src/main/muya/node_modules/
+/app/src/main/muya/dist/
 /.gradle/
 /.kotlin/
 **/build/

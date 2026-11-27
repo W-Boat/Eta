@@ -306,7 +306,7 @@ private fun DeskLinks(title: String, pages: List<DeskPage>, open: (DeskPage) -> 
 @Composable
 internal fun DeskGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     SmallTitle(title)
-    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+    Card(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
         Column(content = content)
     }
 }

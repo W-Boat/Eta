@@ -181,6 +181,8 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
 
     fun clearNotice() { notice = null }
 
+    fun showNotice(message: String) { notice = message }
+
     fun readImport(uri: Uri) = fileOperation("无法读取备份") {
         pendingImport = withContext(Dispatchers.IO) { readWritingBackup(readDocument(uri)) }
     }
