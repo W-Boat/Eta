@@ -3,6 +3,7 @@ package io.github.mangi.eta.ui.screens.writing
 import android.app.Application
 import android.os.Looper
 import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.ComponentActivity
@@ -21,6 +22,7 @@ import androidx.lifecycle.ViewModelProvider
 import io.github.mangi.eta.data.model.AppearanceSettings
 import io.github.mangi.eta.data.model.AppearanceThemeMode
 import io.github.mangi.eta.ui.app.AgentAppTheme
+import io.github.mangi.eta.ui.navigation.AppRoute
 import java.time.Duration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +49,10 @@ class WritingEditorLayoutTest {
         val activity = controller.get()
         val looper = shadowOf(Looper.getMainLooper())
         val first = WritingChapter(title = "第一章", text = "灯亮了。")
-        val recent = WritingChapter(title = "第二章", text = "城门开了。", position = WritingPosition(2, 2))
+        val manuscript = WritingChapter(title = "第二章", text = "城门开了。\n风吹进来。", position = WritingPosition(2, 2))
+        val anchors = writingParagraphs(manuscript)
+        val recent = manuscript.copy(drafts = listOf(ParagraphDraft(anchor = anchors[0], text = "城门缓缓打开。"),
+            ParagraphDraft(anchor = anchors[1], text = "晚风穿过城门。")))
         val book = WritingBook(title = "城门", width = 1100, aiMode = true, activeChapterId = recent.id,
             volumes = listOf(WritingVolume(title = "上卷", chapters = listOf(first, recent))))
         val model = ViewModelProvider(activity)[WritingViewModel::class.java]
@@ -65,6 +70,7 @@ class WritingEditorLayoutTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate + frameClock)
         val recomposer = Recomposer(scope.coroutineContext)
         var theme by mutableStateOf(AppearanceThemeMode.LIGHT)
+        var destination: AppRoute? = null
         val view = ComposeView(activity)
         val density = activity.resources.displayMetrics.density
         fun pump(wide: Boolean) {
@@ -92,7 +98,7 @@ class WritingEditorLayoutTest {
             view.setParentCompositionContext(recomposer)
             view.setContent {
                 AgentAppTheme(appearance = AppearanceSettings(themeMode = theme)) {
-                    WritingChapterScreen(model, bookId, null, null, {}, {})
+                    WritingChapterScreen(model, bookId, null, null, { destination = it }, {})
                 }
             }
             activity.setContentView(view)
@@ -110,15 +116,42 @@ class WritingEditorLayoutTest {
                     assertEquals(2, model.book(bookId)?.activeChapter()?.position?.start)
                     val openWidth = editor().boundsInRoot.width
                     if (wide) assertTrue(openWidth < closedWidth) else assertEquals(closedWidth, openWidth, 0.5f)
-                    click(view, "关闭侧栏")
-                    pump(wide)
-                    click(view, "AI 辅助")
+                    click(view, "逐段审批，2 段待审")
                     pump(wide)
                     assertEquals(mounted.id, editor().id)
-                    click(view, "关闭侧栏")
+                    assertEquals(wide, labels(view).contains("关闭目录"))
+                    assertTrue(labels(view).contains("城门缓缓打开。"))
+                    click(view, "关闭逐段审批")
+                    if (wide) click(view, "关闭目录")
+                    pump(wide)
+                    click(view, "快捷插入")
+                    pump(wide)
+                    assertTrue(labels(view).contains("场景分隔"))
+                    click(view, "关闭快捷插入")
                     pump(wide)
                 }
             }
+            click(view, "创作工作台")
+            assertEquals(AppRoute.WritingDesk(bookId), destination)
+            val nativeEditor = allViews(view).filterIsInstance<ManuscriptEditText>().single()
+            val now = SystemClock.uptimeMillis()
+            val x = nativeEditor.totalPaddingLeft + 8 * density
+            val y = nativeEditor.totalPaddingTop + 8 * density
+            for (action in listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                val event = MotionEvent.obtain(now, now, action, x, y, 0)
+                nativeEditor.onTouchEvent(event)
+                event.recycle()
+            }
+            pump(true)
+            assertTrue(labels(view).containsAll(listOf("编辑本段", "本段改稿提示", "本段批注", "本段伏笔", "本段相关")))
+            click(view, "逐段审批，2 段待审")
+            pump(true)
+            click(view, "采用本段")
+            pump(true)
+            val accepted = requireNotNull(model.book(bookId)?.activeChapter())
+            assertEquals("城门缓缓打开。\n风吹进来。", accepted.text)
+            assertEquals(1, accepted.drafts.count { it.decision == ParagraphDecision.Pending })
+            click(view, "关闭逐段审批")
             click(view, "目录")
             pump(true)
             click(view, "第一章")

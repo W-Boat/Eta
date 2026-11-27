@@ -34,18 +34,22 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 internal data class ManuscriptMarker(val offset: Int, val selected: Boolean = false)
 internal class ManuscriptJump(val offset: Int)
+internal data class ManuscriptParagraphBounds(val top: Int, val bottom: Int, val viewport: Int)
 
 @Composable
 internal fun ManuscriptEditor(
     chapter: WritingChapter,
     source: Boolean,
     markers: List<ManuscriptMarker>,
+    activeParagraph: WritingAnchor?,
+    selecting: Boolean,
     jump: ManuscriptJump?,
     onEdit: (String, ManuscriptEdit) -> Unit,
     onPosition: (WritingPosition) -> Unit,
     onMarker: (Int) -> Unit,
     onSelectionAction: (WritingPosition) -> Unit,
-    onParagraphTap: ((Int) -> Unit)?,
+    onParagraphTap: (Int) -> Unit,
+    onParagraphBounds: (ManuscriptParagraphBounds?) -> Unit,
     modifier: Modifier,
 ) {
     val edit by rememberUpdatedState(onEdit)
@@ -53,6 +57,7 @@ internal fun ManuscriptEditor(
     val marker by rememberUpdatedState(onMarker)
     val select by rememberUpdatedState(onSelectionAction)
     val tap by rememberUpdatedState(onParagraphTap)
+    val bounds by rememberUpdatedState(onParagraphBounds)
     val foreground = MiuixTheme.colorScheme.onSurface.toArgb()
     val accent = MiuixTheme.colorScheme.primary.toArgb()
     AndroidView(
@@ -65,12 +70,13 @@ internal fun ManuscriptEditor(
                 moved = { position(it) }
                 markerSelected = { marker(it) }
                 selectionAction = { select(it) }
-                paragraphTap = { offset -> tap?.invoke(offset) }
+                paragraphTap = { offset -> tap(offset) }
+                paragraphMoved = { bounds(it) }
             }
         },
         update = { view ->
             view.setTextColor(foreground)
-            view.updateAppearance(accent, markers, onParagraphTap != null, source)
+            view.updateAppearance(accent, markers, activeParagraph, selecting, source)
             if (view.text.toString() != chapter.text) view.replaceDocument(chapter.text, view.position())
             if (chapter.position.scroll < 0) view.scrollToOffset(chapter.position.start)
             if (jump != null && view.lastJump !== jump) {
@@ -95,8 +101,12 @@ internal class ManuscriptEditText(context: Context) : EditText(context) {
     private var markerDown: Int? = null
     private var downX = 0f
     private var downY = 0f
+    private var downTime = 0L
+    private var textTap = false
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var markers = emptyList<ManuscriptMarker>()
+    private var activeParagraph: WritingAnchor? = null
+    private var reportedBounds: ManuscriptParagraphBounds? = null
     private var accent = Color.BLACK
     private var multiSelect = false
     private var lastTyping = 0L
@@ -109,6 +119,7 @@ internal class ManuscriptEditText(context: Context) : EditText(context) {
     var markerSelected: ((Int) -> Unit)? = null
     var selectionAction: ((WritingPosition) -> Unit)? = null
     var paragraphTap: ((Int) -> Unit)? = null
+    var paragraphMoved: ((ManuscriptParagraphBounds?) -> Unit)? = null
     var lastJump: ManuscriptJump? = null
 
     init {
@@ -188,9 +199,11 @@ internal class ManuscriptEditText(context: Context) : EditText(context) {
         }
     }
 
-    fun updateAppearance(color: Int, marks: List<ManuscriptMarker>, selecting: Boolean, source: Boolean) {
+    fun updateAppearance(color: Int, marks: List<ManuscriptMarker>, active: WritingAnchor?, selecting: Boolean, source: Boolean) {
         accent = color
         markers = marks
+        activeParagraph = active
+        reportParagraphBounds()
         multiSelect = selecting
         if (highlighting == source) {
             highlighting = !source
@@ -234,6 +247,30 @@ internal class ManuscriptEditText(context: Context) : EditText(context) {
     override fun onScrollChanged(x: Int, y: Int, oldX: Int, oldY: Int) {
         super.onScrollChanged(x, y, oldX, oldY)
         if (!updating && y != oldY) moved?.invoke(position())
+        reportParagraphBounds()
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        reportParagraphBounds()
+    }
+
+    private fun reportParagraphBounds() {
+        val content = layout
+        val active = activeParagraph
+        val bounds = if (content != null && active != null && active.offset < length()) {
+            val first = content.getLineForOffset(active.offset)
+            val last = content.getLineForOffset((active.offset + active.quote.length - 1).coerceIn(active.offset, length()))
+            ManuscriptParagraphBounds(
+                totalPaddingTop + content.getLineTop(first) - scrollY,
+                totalPaddingTop + content.getLineBottom(last) - scrollY,
+                height,
+            )
+        } else null
+        if (bounds != reportedBounds) {
+            reportedBounds = bounds
+            paragraphMoved?.invoke(bounds)
+        }
     }
 
     override fun onFocusChanged(focused: Boolean, direction: Int, previouslyFocusedRect: android.graphics.Rect?) {
@@ -249,6 +286,19 @@ internal class ManuscriptEditText(context: Context) : EditText(context) {
         if (customCursor != showBreath) {
             customCursor = showBreath
             textCursorDrawable = if (showBreath) hiddenCursor else normalCursor
+        }
+        val active = activeParagraph
+        if (content != null && active != null && active.offset < length()) {
+            val first = content.getLineForOffset(active.offset)
+            val last = content.getLineForOffset((active.offset + active.quote.length - 1).coerceIn(active.offset, length()))
+            val top = totalPaddingTop + content.getLineTop(first).toFloat()
+            val bottom = totalPaddingTop + content.getLineBottom(last).toFloat()
+            paint.color = accent
+            paint.alpha = 25
+            canvas.drawRoundRect(
+                scrollX + gutter * 0.78f, top,
+                scrollX + width - 12 * density, bottom, 9 * density, 9 * density, paint,
+            )
         }
         super.onDraw(canvas)
         if (content == null) return
@@ -279,13 +329,26 @@ internal class ManuscriptEditText(context: Context) : EditText(context) {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             downX = event.x
             downY = event.y
+            downTime = event.eventTime
+            val y = event.y + scrollY - totalPaddingTop
+            textTap = event.x >= gutter && y >= 0f && y < content.height
             markerDown = if (multiSelect || event.x < gutter) {
                 markers.firstOrNull { content.getLineForOffset(it.offset.coerceIn(0, length())) == line }?.offset
                     ?: lineOffset.takeIf { multiSelect }
             } else null
             return super.onTouchEvent(event)
         }
-        val hit = markerDown ?: return super.onTouchEvent(event)
+        val movedFar = kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop
+        if (movedFar || event.actionMasked == MotionEvent.ACTION_CANCEL || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) textTap = false
+        val hit = markerDown
+        if (hit == null) {
+            val tapped = textTap && event.actionMasked == MotionEvent.ACTION_UP &&
+                event.eventTime - downTime < ViewConfiguration.getLongPressTimeout()
+            val offset = if (tapped) getOffsetForPosition(event.x, event.y) else -1
+            val handled = super.onTouchEvent(event)
+            if (tapped && offset >= 0 && selectionStart == selectionEnd) paragraphTap?.invoke(offset)
+            return handled
+        }
         if (event.actionMasked == MotionEvent.ACTION_UP) {
             markerDown = null
             val cancel = MotionEvent.obtain(event)
@@ -297,9 +360,7 @@ internal class ManuscriptEditText(context: Context) : EditText(context) {
         } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
             markerDown = null
             return super.onTouchEvent(event)
-        } else if (event.actionMasked == MotionEvent.ACTION_MOVE &&
-            (kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop)
-        ) {
+        } else if (event.actionMasked == MotionEvent.ACTION_MOVE && movedFar) {
             markerDown = null
             return super.onTouchEvent(event)
         }

@@ -7,6 +7,7 @@ import android.widget.TextView
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,15 +23,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Comment
 import androidx.compose.material.icons.rounded.FormatListBulleted
-import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.RateReview
+import androidx.compose.material.icons.rounded.Route
+import androidx.compose.material.icons.rounded.ThumbDown
+import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +55,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -73,6 +81,12 @@ import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.glass.Close
+import top.yukonga.miuix.kmp.icon.glass.Edit
+import top.yukonga.miuix.kmp.icon.glass.More
+import top.yukonga.miuix.kmp.icon.glass.Ok
+import top.yukonga.miuix.kmp.icon.glass.Refresh
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -105,7 +119,10 @@ internal fun WritingChapterScreen(
         return
     }
 
-    var drawer by rememberSaveable { mutableStateOf<String?>(null) }
+    var contentsOpen by rememberSaveable { mutableStateOf(false) }
+    var assistOpen by rememberSaveable { mutableStateOf(false) }
+    var wide by remember { mutableStateOf(false) }
+    var insertOpen by rememberSaveable(chapter.id) { mutableStateOf(false) }
     var fullReview by rememberSaveable(chapter.id) { mutableStateOf(false) }
     var menu by rememberSaveable { mutableStateOf(false) }
     var versions by rememberSaveable { mutableStateOf(false) }
@@ -123,14 +140,20 @@ internal fun WritingChapterScreen(
     var selecting by rememberSaveable(chapter.id) { mutableStateOf(false) }
     var picked by remember(chapter.id) { mutableStateOf(emptySet<WritingAnchor>()) }
     var pickedDraft by rememberSaveable(chapter.id) { mutableStateOf<String?>(null) }
+    var editingDraft by rememberSaveable(chapter.id) { mutableStateOf<String?>(null) }
     var replacingDraft by rememberSaveable(chapter.id) { mutableStateOf<String?>(null) }
-    var feedback by remember(chapter.id) { mutableStateOf<WritingAnchor?>(null) }
+    var activeParagraph by remember(chapter.id) { mutableStateOf<WritingAnchor?>(null) }
+    var related by remember(chapter.id) { mutableStateOf<WritingAnchor?>(null) }
+    var nativeParagraphBounds by remember(chapter.id) { mutableStateOf<ManuscriptParagraphBounds?>(null) }
+    var paragraphEdit by remember(chapter.id) { mutableStateOf<WritingAnchor?>(null) }
+    var feedback by remember(chapter.id) { mutableStateOf<Pair<WritingAnchor, ParagraphFeedbackField>?>(null) }
     var jump by remember(chapter.id) { mutableStateOf<ManuscriptJump?>(null) }
     var position by remember(chapter.id) { mutableStateOf(chapter.position) }
     var words by remember(chapter.id) { mutableStateOf<Int?>(null) }
     var instruction by rememberSaveable(chapter.id) { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
     val history = remember(chapter.id) { ManuscriptHistory() }
+    var measuredText by remember(chapter.id) { mutableStateOf<String?>(null) }
     var paragraphs by remember(chapter.id) { mutableStateOf(emptyList<WritingAnchor>()) }
     val pending = chapter.drafts.filter { it.decision in setOf(ParagraphDecision.Pending, ParagraphDecision.Stale) }
     val selectedIds = pending.filter { it.selected && it.decision == ParagraphDecision.Pending }.mapTo(hashSetOf()) { it.id }
@@ -144,15 +167,25 @@ internal fun WritingChapterScreen(
         val measured = withContext(Dispatchers.Default) { writingWordCount(chapter.text) to writingParagraphs(chapter) }
         words = measured.first
         paragraphs = measured.second
+        measuredText = chapter.text
+    }
+    fun openAssist() {
+        if (!wide) contentsOpen = false
+        assistOpen = true
+        insertOpen = false
+        keyboard?.hide()
     }
     fun closeLayer() = when {
-        fullReview -> { fullReview = false; drawer = "assist"; true }
-        selecting -> { selecting = false; picked = emptySet(); true }
-        drawer != null -> { drawer = null; true }
+        fullReview -> { fullReview = false; openAssist(); true }
+        insertOpen -> { insertOpen = false; true }
+        selecting -> { selecting = false; picked = emptySet(); replacingDraft = null; true }
+        assistOpen -> { assistOpen = false; true }
+        contentsOpen -> { contentsOpen = false; true }
         preview -> { preview = false; true }
+        activeParagraph != null -> { activeParagraph = null; true }
         else -> false
     }
-    BackHandler(enabled = fullReview || selecting || drawer != null || preview || rich) {
+    BackHandler(enabled = fullReview || selecting || contentsOpen || assistOpen || insertOpen || preview || activeParagraph != null || rich) {
         if (!closeLayer()) richSession.flush(back)
     }
     fun withNativeEditor(action: () -> Unit) {
@@ -163,9 +196,13 @@ internal fun WritingChapterScreen(
         }
     }
     fun selectChapter(id: String) {
-        richSession.flush { state.openChapter(bookId, id); drawer = null; preview = false }
+        richSession.flush { state.openChapter(bookId, id); contentsOpen = false; preview = false }
     }
-    fun paragraphAt(offset: Int) = paragraphs.firstOrNull { offset in it.offset..(it.offset + it.quote.length) }
+    fun currentParagraphs(): List<WritingAnchor> {
+        val latest = state.book(bookId)?.chapter(chapterId) ?: chapter
+        return if (measuredText == latest.text) paragraphs else writingParagraphs(latest)
+    }
+    fun paragraphAt(offset: Int) = currentParagraphs().firstOrNull { offset in it.offset..(it.offset + it.quote.length) }
     fun retryDraft(draft: ParagraphDraft) {
         if (draft.decision == ParagraphDecision.Pending) {
             val target = writingParagraphs(chapter).firstOrNull { it == draft.anchor } ?: return
@@ -173,7 +210,8 @@ internal fun WritingChapterScreen(
         } else {
             withNativeEditor {
                 fullReview = false
-                drawer = null
+                assistOpen = false
+                contentsOpen = false
                 selecting = true
                 picked = emptySet()
                 replacingDraft = draft.id
@@ -184,16 +222,19 @@ internal fun WritingChapterScreen(
     }
     fun reviewAt(offset: Int) {
         val draft = pending.firstOrNull { it.anchor.offset == offset }
-        if (draft != null) { pickedDraft = draft.id; drawer = "assist"; keyboard?.hide() }
+        if (draft != null) {
+            pickedDraft = draft.id
+            activeParagraph = null
+            openAssist()
+        }
     }
     fun selectRange(cursor: WritingPosition) {
         val start = minOf(cursor.start, cursor.end)
         val end = maxOf(cursor.start, cursor.end)
-        picked = if (start == end) setOfNotNull(paragraphAt(start)) else paragraphs.filterTo(linkedSetOf()) { anchor ->
+        picked = if (start == end) setOfNotNull(paragraphAt(start)) else currentParagraphs().filterTo(linkedSetOf()) { anchor ->
             anchor.offset < end && anchor.offset + anchor.quote.length > start
         }
-        drawer = "assist"
-        keyboard?.hide()
+        openAssist()
     }
     fun applyDrafts(ids: Set<String>) = withNativeEditor {
         val before = state.book(bookId)?.chapter(chapterId) ?: return@withNativeEditor
@@ -209,6 +250,8 @@ internal fun WritingChapterScreen(
     }
     fun saveParagraph(note: WritingFeedback, existing: String?, title: String) {
         state.edit(bookId) { current ->
+            val actual = current.chapter(chapterId) ?: return@edit current
+            if (note.anchor !in writingParagraphs(actual)) return@edit current
             val updated = current.changeChapter(chapterId) { currentChapter ->
                 currentChapter.copy(feedback = currentChapter.feedback.filterNot { old ->
                     old.anchor.locate(currentChapter.text) == note.anchor.offset
@@ -227,11 +270,31 @@ internal fun WritingChapterScreen(
         }
         feedback = null
     }
+    fun insert(action: WritingInsert) = withNativeEditor {
+        val latest = state.book(bookId)?.chapter(chapterId) ?: return@withNativeEditor
+        val anchor = activeParagraph?.takeIf { it in writingParagraphs(latest) }
+        val at = if (position.start == position.end && anchor != null) WritingPosition(anchor.offset, anchor.offset) else latest.position
+        val change = action.at(latest.text, at)
+        state.writeManuscript(bookId, chapterId, latest.text.replaceRange(change.start, change.end, change.replacement),
+            ManuscriptEdit(change.start, change.end, change.start + change.replacement.length)) { history.record(it, false) }
+        jump = ManuscriptJump(change.caret)
+        activeParagraph = null
+        insertOpen = false
+    }
     fun cycleReview(id: String) {
         pickedDraft = id
-        pending.find { it.id == id }?.takeIf { it.decision == ParagraphDecision.Pending }
-            ?.let { draft -> withNativeEditor { jump = ManuscriptJump(draft.anchor.offset) } }
+        activeParagraph = null
+        if (!rich) pending.firstOrNull { it.id == id && it.decision == ParagraphDecision.Pending }
+            ?.let { jump = ManuscriptJump(it.anchor.offset) }
     }
+    val focusedDraft = pending.firstOrNull { it.id == pickedDraft } ?: pending.firstOrNull()
+    val visibleParagraph = activeParagraph?.takeIf { chapter.text.startsWith(it.quote, it.offset) }
+    val paragraphNumbers = remember(paragraphs) {
+        paragraphs.mapIndexed { index, anchor -> anchor.offset to index + 1 }.toMap()
+    }
+    fun draftLabel(draft: ParagraphDraft): String =
+        paragraphNumbers[draft.anchor.offset]?.takeIf { draft.decision == ParagraphDecision.Pending }?.let { "第 $it 段" }
+            ?: if (draft.decision == ParagraphDecision.Stale) "待重生成" else "待审"
 
     PageScaffold(
         title = chapter.title,
@@ -242,24 +305,43 @@ internal fun WritingChapterScreen(
         isContentScrolled = position.scroll > 0,
         actions = {
             TopBarActionButton(Icons.Rounded.FormatListBulleted, "目录", onClick = {
-                drawer = if (drawer == "contents") null else "contents"
-            })
-            TopBarActionButton(Icons.Rounded.AutoAwesome, if (pending.isEmpty()) "AI 辅助" else "AI 辅助，${pending.size} 段待处理",
-                onClick = { drawer = if (drawer == "assist") null else "assist" })
-            TopBarActionButton(Icons.Rounded.MoreVert, "写作选项", onClick = { menu = true })
+                if (!contentsOpen && !wide) assistOpen = false
+                contentsOpen = !contentsOpen
+                insertOpen = false
+                keyboard?.hide()
+            }, tint = if (contentsOpen) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
+            Box {
+                TopBarActionButton(Icons.Rounded.RateReview, if (pending.isEmpty()) "AI 辅助与逐段审批" else "逐段审批，${pending.size} 段待审",
+                    onClick = { if (assistOpen) assistOpen = false else openAssist() },
+                    tint = if (assistOpen) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
+                if (pending.isNotEmpty()) {
+                    val colors = MiuixTheme.colorScheme
+                    Text(pending.size.coerceAtMost(99).toString(), Modifier.align(Alignment.TopEnd)
+                        .background(colors.primary, CircleShape).padding(horizontal = 4.dp),
+                        color = colors.onPrimary, style = MiuixTheme.textStyles.footnote1)
+                }
+            }
+            TopBarActionButton(MiuixIcons.Glass.More, "写作选项", onClick = { menu = true; insertOpen = false })
         },
     ) { padding, _, _ ->
         val colors = MiuixTheme.colorScheme
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding).horizontalCutoutPadding().navigationBarsPadding().background(colors.surface)) {
             val viewportWidth = maxWidth
-            val wide = viewportWidth >= 840.dp
-            val paneWidth = if (wide) 310.dp else (viewportWidth * 0.86f).coerceAtMost(340.dp)
-            val edge = if (drawer == "contents") Alignment.CenterStart else Alignment.CenterEnd
-            val startInset = if (wide && drawer == "contents") paneWidth else 0.dp
-            val endInset = if (wide && drawer == "assist") paneWidth else 0.dp
-            Box(Modifier.fillMaxSize().padding(start = startInset, end = endInset), contentAlignment = Alignment.TopCenter) {
+            val wideLayout = viewportWidth >= 840.dp
+            LaunchedEffect(wideLayout) {
+                wide = wideLayout
+                if (!wideLayout && assistOpen) contentsOpen = false
+            }
+            val contentsVisible = contentsOpen && (wideLayout || !assistOpen)
+            val paneWidth = (viewportWidth * 0.86f).coerceAtMost(340.dp)
+            val contentsWidth = if (wideLayout) 216.dp else paneWidth
+            val assistWidth = if (wideLayout) 298.dp else paneWidth
+            val startInset = if (wideLayout && contentsVisible) contentsWidth else 0.dp
+            val endInset = if (wideLayout && assistOpen) assistWidth else 0.dp
+            Column(Modifier.fillMaxSize().padding(start = startInset, end = endInset), horizontalAlignment = Alignment.CenterHorizontally) {
                 val editorWidth = if (livePreview && !preview) (book.width * 2).dp else book.width.dp
-                Row(Modifier.widthIn(max = editorWidth).fillMaxSize()) {
+                Row(Modifier.weight(1f).widthIn(max = editorWidth).fillMaxWidth()) {
+                    val paragraphBounds = nativeParagraphBounds
                     Box(Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = "正文编辑器" }) {
                         if (rich) key(chapterId) {
                             RichManuscriptEditor(
@@ -279,11 +361,15 @@ internal fun WritingChapterScreen(
                         } else key(chapterId) {
                             val markers = if (selecting) paragraphs.map { ManuscriptMarker(it.offset, it in picked) }
                             else pending.filter { it.decision == ParagraphDecision.Pending }.distinctBy { it.anchor.offset }
-                                .map { ManuscriptMarker(it.anchor.offset, it.id == pickedDraft) }
+                                .map { ManuscriptMarker(it.anchor.offset, assistOpen && it.id == focusedDraft?.id) }
                             ManuscriptEditor(
                                 chapter = chapter,
                                 source = source,
                                 markers = markers,
+                                activeParagraph = visibleParagraph ?: focusedDraft?.takeIf {
+                                    assistOpen && it.decision == ParagraphDecision.Pending
+                                }?.anchor,
+                                selecting = selecting,
                                 jump = jump,
                                 onEdit = { text, patch ->
                                     state.writeManuscript(bookId, chapterId, text, patch) { history.record(it, true) }
@@ -294,11 +380,49 @@ internal fun WritingChapterScreen(
                                 },
                                 onMarker = ::reviewAt,
                                 onSelectionAction = ::selectRange,
-                                onParagraphTap = if (selecting) { offset ->
-                                    paragraphAt(offset)?.let { picked = if (it in picked) picked - it else picked + it }
-                                } else null,
+                                onParagraphBounds = { nativeParagraphBounds = it },
+                                onParagraphTap = { offset ->
+                                    if (selecting) {
+                                        paragraphAt(offset)?.let { picked = if (it in picked) picked - it else picked + it }
+                                    } else {
+                                        insertOpen = false
+                                        val tapped = paragraphAt(offset)
+                                        activeParagraph = tapped.takeUnless { it == activeParagraph }
+                                        if (tapped != null && assistOpen) {
+                                            pending.firstOrNull { it.decision == ParagraphDecision.Pending && it.anchor == tapped }
+                                                ?.let { pickedDraft = it.id }
+                                        }
+                                    }
+                                },
                                 modifier = Modifier.fillMaxSize(),
                             )
+                        }
+                        if (!rich && !preview && !selecting && !insertOpen && visibleParagraph != null && paragraphBounds != null) {
+                            val existing = chapter.feedback.firstOrNull { it.anchor.offset == visibleParagraph.offset && !it.anchor.detached }
+                            WritingParagraphMenu(paragraphBounds, Modifier.matchParentSize()) {
+                                TopBarActionButton(MiuixIcons.Glass.Edit, "编辑本段", onClick = { paragraphEdit = visibleParagraph })
+                                TopBarActionButton(Icons.Rounded.AutoAwesome, "本段改稿提示", onClick = {
+                                    feedback = visibleParagraph to ParagraphFeedbackField.Prompt
+                                })
+                                for ((vote, icon) in listOf(1 to Icons.Rounded.ThumbUp, -1 to Icons.Rounded.ThumbDown)) {
+                                    val selected = existing?.vote == vote
+                                    TopBarActionButton(icon, if (vote == 1) "赞" else "踩",
+                                        modifier = Modifier.semantics { this.selected = selected },
+                                        tint = if (selected) colors.primary else colors.onSurface,
+                                        onClick = {
+                                            saveParagraph((existing ?: WritingFeedback(visibleParagraph)).copy(
+                                                anchor = visibleParagraph, vote = if (selected) 0 else vote,
+                                            ), null, "")
+                                        })
+                                }
+                                TopBarActionButton(Icons.Rounded.Comment, "本段批注", onClick = {
+                                    feedback = visibleParagraph to ParagraphFeedbackField.Annotation
+                                })
+                                TopBarActionButton(Icons.Rounded.Route, "本段伏笔", onClick = {
+                                    feedback = visibleParagraph to ParagraphFeedbackField.Foreshadow
+                                })
+                                TopBarActionButton(Icons.Rounded.Link, "本段相关", onClick = { related = visibleParagraph })
+                            }
                         }
                         if (preview) {
                             Box(Modifier.fillMaxSize().background(colors.surface).clickable(enabled = false) {}) {
@@ -310,127 +434,160 @@ internal fun WritingChapterScreen(
                         WritingMarkdown(chapter.text, Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(24.dp))
                     }
                 }
-                if (selecting) Card(Modifier.align(Alignment.BottomCenter).padding(12.dp)) {
-                    Row(Modifier.padding(horizontal = 9.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TextButton("取消", onClick = { selecting = false; picked = emptySet(); replacingDraft = null })
-                        TextButton("改写所选 ${picked.size} 段", enabled = picked.isNotEmpty(), onClick = {
+                if (selecting) Card(Modifier.padding(8.dp)) {
+                    Row(Modifier.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TopBarActionButton(MiuixIcons.Glass.Close, "取消多选", onClick = {
+                            selecting = false; picked = emptySet(); replacingDraft = null
+                        })
+                        Text("已选 ${picked.size} 段", Modifier.padding(horizontal = 6.dp))
+                        TopBarActionButton(Icons.Rounded.AutoAwesome, "改写所选段落", enabled = picked.isNotEmpty(), onClick = {
                             selecting = false
-                            drawer = "assist"
+                            openAssist()
                         })
                     }
                 }
-                if (!selecting && drawer == null && !fullReview && state.notice != null) {
-                    Box(Modifier.align(Alignment.BottomCenter).widthIn(max = 440.dp).fillMaxWidth()) {
+                if (!selecting && !contentsVisible && !assistOpen && !fullReview && state.notice != null) {
+                    Box(Modifier.widthIn(max = 440.dp).fillMaxWidth()) {
                         WritingNotice(state)
                     }
                 }
-            }
-            if (drawer != null && !fullReview) {
-                if (!wide) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.27f)).clickable { drawer = null })
-                val panelSurface = if (wide) colors.surfaceContainer else colors.surface
-                Column(Modifier.align(edge).width(paneWidth).fillMaxHeight()
-                    .then(if (wide) Modifier else Modifier.squircleClip(22.dp)).background(panelSurface)) {
-                    Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 2.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (drawer == "contents") "目录" else "AI 辅助", Modifier.weight(1f), style = MiuixTheme.textStyles.title3)
-                        TopBarActionButton(Icons.Rounded.Close, "关闭侧栏", onClick = { drawer = null })
+                if (!selecting && !preview) {
+                    Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                        WritingEditorDock(
+                            expanded = insertOpen,
+                            onToggleInsert = {
+                                insertOpen = !insertOpen
+                            },
+                            onInsert = ::insert,
+                            onOpenDesk = {
+                                insertOpen = false
+                                keyboard?.hide()
+                                richSession.flush { navigate(AppRoute.WritingDesk(bookId)) }
+                            },
+                        )
                     }
-                    HorizontalDivider()
-                    if (drawer == "contents") {
-                        LazyColumn {
-                            item("book") {
-                                val facts = "${book.volumes.size} 卷 · ${book.chapters.size} 章"
-                                WritingEntry(bookTitle, if (state.saving) "$facts · 正在保存" else "$facts · 书籍设置与导出") {
-                                    richSession.flush { navigate(AppRoute.WritingBookSettings(bookId)) }
-                                }
+                }
+            }
+            if (!fullReview) {
+                if (!wideLayout && (contentsVisible || assistOpen)) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.27f))
+                        .clickable(onClickLabel = "关闭侧栏") { assistOpen = false; contentsOpen = false })
+                }
+                if (contentsVisible) WritingEditorPanel(
+                    "目录", Modifier.align(Alignment.CenterStart).width(contentsWidth), wideLayout, { contentsOpen = false },
+                ) {
+                    LazyColumn {
+                        item("book") {
+                            val facts = "${book.volumes.size} 卷 · ${book.chapters.size} 章"
+                            WritingEntry(bookTitle, if (state.saving) "$facts · 正在保存" else "$facts · 书籍设置与导出") {
+                                richSession.flush { navigate(AppRoute.WritingBookSettings(bookId)) }
                             }
-                            book.volumes.forEach { volume ->
-                                item("vol-${volume.id}") { SmallTitle(volume.title) }
-                                items(volume.chapters, key = { it.id }) { entry ->
-                                    WritingEntry(
-                                        if (entry.id == chapterId) "✓ ${entry.title}" else entry.title,
-                                        if (entry.handoff != null) "已定稿" else null,
-                                    ) { selectChapter(entry.id) }
-                                }
-                                item("add-${volume.id}") { WritingEntry("新建章节") { chapterNew = volume.id } }
-                            }
-                            item("add-volume") { WritingEntry("新建卷") { volumeNew = true } }
                         }
-                    } else {
-                        LazyColumn {
-                            item { WritingNotice(state) }
-                            item("workspace") {
-                                WritingEntry("创作工作台", "本章剧情接力") {
-                                    richSession.flush { navigate(AppRoute.WritingDesk(bookId)) }
-                                }
+                        book.volumes.forEach { volume ->
+                            item("vol-${volume.id}") { SmallTitle(volume.title) }
+                            items(volume.chapters, key = { it.id }) { entry ->
+                                WritingEntry(
+                                    if (entry.id == chapterId) "✓ ${entry.title}" else entry.title,
+                                    if (entry.handoff != null) "已定稿" else null,
+                                ) { selectChapter(entry.id) }
                             }
-                            writingGeneration(state)
-                            if (pending.isNotEmpty() || chapter.candidate != null) item("review") {
-                                WritingEntry("全屏对照", "待处理 ${pending.size + if (chapter.candidate != null) 1 else 0} 项") {
+                            item("add-${volume.id}") { WritingEntry("新建章节") { chapterNew = volume.id } }
+                        }
+                        item("add-volume") { WritingEntry("新建卷") { volumeNew = true } }
+                    }
+                }
+                if (assistOpen) WritingEditorPanel(
+                    "逐段审批", Modifier.align(Alignment.CenterEnd).width(assistWidth), wideLayout, { assistOpen = false },
+                ) {
+                    LazyColumn {
+                        item { WritingNotice(state) }
+                        writingGeneration(state)
+                        item("review-queue") {
+                            val count = pending.size + if (chapter.candidate != null) 1 else 0
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (count == 0) "本章没有待审内容" else "$count 项待审", Modifier.weight(1f),
+                                    style = MiuixTheme.textStyles.footnote1)
+                                if (count > 0) TopBarActionButton(Icons.Rounded.Fullscreen, "全屏对照", onClick = {
                                     fullReview = true
                                     keyboard?.hide()
+                                })
+                            }
+                            if (pending.size > 1) LazyRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                items(pending, key = { it.id }) { draft ->
+                                    val isSelected = draft.id == focusedDraft?.id
+                                    TextButton(draftLabel(draft), onClick = { cycleReview(draft.id) },
+                                        modifier = Modifier.semantics { selected = isSelected },
+                                        colors = if (isSelected) ButtonDefaults.textButtonColorsPrimary()
+                                            else ButtonDefaults.textButtonColors())
                                 }
                             }
-                            paragraphReviews(pending, pickedDraft, selectedIds, ::cycleReview,
-                                change = { id, action -> state.changeDraft(bookId, chapterId, id, action) },
-                                accept = ::applyDrafts,
-                                retry = ::retryDraft,
-                                busy = state.generating != null,
-                            )
-                            chapterCandidate(state, bookId, chapter, history)
-                            item("writing-actions") {
-                                WritingSection {
-                                    SettingsTextField("作者要求", instruction, singleLine = false) { instruction = it }
-                                    SettingsTextField("已确认摘要", chapter.summary, singleLine = false) { value ->
-                                        state.editChapter(bookId, chapterId) { it.copy(summary = value) }
+                        }
+                        paragraphReviews(listOfNotNull(focusedDraft), selectedIds, ::draftLabel, editingDraft,
+                            toggleEdit = { id -> editingDraft = id.takeUnless { editingDraft == id } },
+                            change = { id, action -> state.changeDraft(bookId, chapterId, id, action) },
+                            accept = ::applyDrafts,
+                            retry = ::retryDraft,
+                            busy = state.generating != null,
+                        )
+                        chapterCandidate(state, bookId, chapter, history)
+                        item("writing-actions") {
+                            WritingSection {
+                                SettingsTextField("作者要求", instruction, singleLine = false) { instruction = it }
+                                SettingsTextField("已确认摘要", chapter.summary, singleLine = false) { value ->
+                                    state.editChapter(bookId, chapterId) { it.copy(summary = value) }
+                                }
+                                val available = state.generating == null
+                                    val range = if (picked.isEmpty()) emptyList() else {
+                                        val availableParagraphs = currentParagraphs().toHashSet()
+                                        picked.filter { it in availableParagraphs }.sortedBy { it.offset }
                                     }
-                                    val available = state.generating == null
-                                    val range = picked.filter { it in paragraphs }.sortedBy { it.offset }
-                                    val target = paragraphAt(position.start).takeUnless { rich }
-                                    if (range.isNotEmpty() || target != null) WritingEntry(
-                                        if (range.isNotEmpty()) "改写所选 ${range.size} 段" else "改写光标所在段",
-                                    ) {
-                                        if (available) {
-                                            val valid = writingParagraphs(chapter).toSet()
-                                            val targets = range.ifEmpty { listOfNotNull(target) }.filter { it in valid }
-                                            if (targets.isNotEmpty()) {
-                                                state.generate(bookId, chapterId, WritingTask.Rewrite, instruction, targets,
-                                                    replacingDraft = replacingDraft)
-                                                replacingDraft = null
-                                            }
+                                val target = paragraphAt(position.start).takeUnless { rich }
+                                if (range.isNotEmpty() || target != null) WritingEntry(
+                                    if (range.isNotEmpty()) "改写所选 ${range.size} 段" else "改写光标所在段",
+                                ) {
+                                    if (available) {
+                                        val valid = writingParagraphs(chapter).toSet()
+                                        val targets = range.ifEmpty { listOfNotNull(target) }.filter { it in valid }
+                                        if (targets.isNotEmpty()) {
+                                            state.generate(bookId, chapterId, WritingTask.Rewrite, instruction, targets,
+                                                replacingDraft = replacingDraft)
+                                            replacingDraft = null
                                         }
                                     }
-                                    WritingEntry("在正文多选段落") {
-                                        withNativeEditor { drawer = null; selecting = true; keyboard?.hide() }
-                                    }
-                                    if (target != null) WritingEntry("本段批注与伏笔") { feedback = target }
+                                }
+                                WritingEntry("在正文多选段落") {
+                                    withNativeEditor { assistOpen = false; selecting = true; keyboard?.hide() }
+                                }
+                                if (target != null) WritingEntry("本段批注") {
+                                    feedback = target to ParagraphFeedbackField.Annotation
                                 }
                             }
-                            if (state.generating == null) item("chapter-workflow") {
-                                DeskGroup("章节任务") {
-                                    WritingEntry("生成摘要") {
-                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Summary, instruction) }
+                        }
+                        if (state.generating == null) item("chapter-workflow") {
+                            DeskGroup("章节任务") {
+                                WritingEntry("生成摘要") {
+                                    richSession.flush { state.generate(bookId, chapterId, WritingTask.Summary, instruction) }
+                                }
+                                if (chapter.summary.isNotBlank()) WritingEntry("根据摘要生成初稿") {
+                                    richSession.flush { state.generate(bookId, chapterId, WritingTask.Draft, instruction) }
+                                }
+                                if (chapter.text.isNotBlank()) {
+                                    WritingEntry("整章改稿") {
+                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Rewrite, instruction) }
                                     }
-                                    if (chapter.summary.isNotBlank()) WritingEntry("根据摘要生成初稿") {
-                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Draft, instruction) }
+                                    WritingEntry("从章内提取资料") {
+                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Extract, instruction) }
                                     }
-                                    if (chapter.text.isNotBlank()) {
-                                        WritingEntry("整章改稿") {
-                                            richSession.flush { state.generate(bookId, chapterId, WritingTask.Rewrite, instruction) }
-                                        }
-                                        WritingEntry("从章内提取资料") {
-                                            richSession.flush { state.generate(bookId, chapterId, WritingTask.Extract, instruction) }
-                                        }
-                                        WritingEntry("生成定稿交接") {
-                                            richSession.flush { state.generate(bookId, chapterId, WritingTask.Handoff, instruction) }
-                                        }
+                                    WritingEntry("生成定稿交接") {
+                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Handoff, instruction) }
                                     }
                                 }
                             }
-                            item("handoff") {
-                                WritingHandoffCard(book, chapter, { handoff = true }) { value ->
-                                    state.editChapter(bookId, chapterId) { it.copy(handoff = value) }
-                                }
+                        }
+                        item("handoff") {
+                            WritingHandoffCard(book, chapter, { handoff = true }) { value ->
+                                state.editChapter(bookId, chapterId) { it.copy(handoff = value) }
                             }
                         }
                     }
@@ -440,23 +597,22 @@ internal fun WritingChapterScreen(
                 Column(Modifier.fillMaxSize().background(colors.surface)) {
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("全屏对照", Modifier.weight(1f), style = MiuixTheme.textStyles.title3)
-                        TopBarActionButton(Icons.Rounded.Close, "返回正文", onClick = { closeLayer() })
+                        TopBarActionButton(MiuixIcons.Glass.Close, "返回正文", onClick = { closeLayer() })
                     }
                     HorizontalDivider()
                     val list = rememberLazyListState()
                     LaunchedEffect(Unit) {
-                        val index = pending.indexOfFirst { it.id == pickedDraft }
+                        val index = pending.indexOfFirst { it.id == focusedDraft?.id }
                         if (index >= 0) list.scrollToItem(index + 2)
                     }
                     LazyColumn(Modifier.fillMaxSize(), state = list) {
                         item("notice") { WritingNotice(state) }
-                        paragraphReviews(pending, pickedDraft, selectedIds,
-                            focus = ::cycleReview,
+                        paragraphReviews(pending, selectedIds, ::draftLabel, editingDraft,
+                            toggleEdit = { id -> editingDraft = id.takeUnless { editingDraft == id }; cycleReview(id) },
                             change = { id, action -> state.changeDraft(bookId, chapterId, id, action) },
                             accept = ::applyDrafts,
                             retry = ::retryDraft,
                             busy = state.generating != null,
-                            showAll = true,
                         )
                         chapterCandidate(state, bookId, chapter, history, compare = true)
                     }
@@ -485,16 +641,6 @@ internal fun WritingChapterScreen(
         if (history.canRedo) WritingEntry("重做") { menu = false; history.redo(chapter)?.let(::restore) }
         WritingEntry("版本历史") { menu = false; versions = true }
         WritingEntry("章节与排版设置") { menu = false; settings = true }
-        if (!rich) WritingEntry("插入场景分隔线") {
-            menu = false
-            val start = minOf(position.start, position.end).coerceIn(0, chapter.text.length)
-            val end = maxOf(position.start, position.end).coerceIn(start, chapter.text.length)
-            val line = "\n\n---\n\n"
-            history.record(chapter, false)
-            state.writeManuscript(bookId, chapterId, chapter.text.replaceRange(start, end, line),
-                ManuscriptEdit(start, end, start + line.length))
-            jump = ManuscriptJump(start + line.length)
-        }
     }
     if (versions) WritingVersionsScreen(chapter, { versions = false }, save = {
         state.editChapter(bookId, chapterId) { it.copy(versions = (listOf(WritingVersion(it.text, "手动快照")) + it.versions).take(20)) }
@@ -540,15 +686,74 @@ internal fun WritingChapterScreen(
             state.edit(bookId) { current -> current.copy(activeChapterId = created.id, volumes = current.volumes.map {
                 if (it.id == volumeId) it.copy(chapters = it.chapters + created) else it
             }) }
-            drawer = null
+            contentsOpen = false
             chapterNew = null
             preview = false
         }
     }
-    feedback?.let { WritingFeedbackDialog(book, chapter, it, { feedback = null }, ::saveParagraph) }
+    feedback?.let { (anchor, field) ->
+        val rewrite: ((String) -> Unit)? = if (field == ParagraphFeedbackField.Prompt && state.generating == null) { prompt ->
+            if (anchor in currentParagraphs()) {
+                activeParagraph = null
+                openAssist()
+                state.generate(bookId, chapterId, WritingTask.Rewrite, prompt, listOf(anchor))
+            }
+        } else null
+        WritingFeedbackDialog(book, chapter, anchor, field, { feedback = null }, ::saveParagraph, rewrite)
+    }
+    paragraphEdit?.let { anchor ->
+        var revised by rememberSaveable(anchor.offset, anchor.quote) { mutableStateOf(anchor.quote) }
+        WritingDialog("编辑本段", { paragraphEdit = null }) {
+            SettingsTextField("正文", revised, singleLine = false, inputTransformation = null) { revised = it }
+            DialogActions("保存", { paragraphEdit = null }, {
+                val latest = state.book(bookId)?.chapter(chapterId)
+                if (latest != null && anchor in writingParagraphs(latest)) {
+                    val end = anchor.offset + anchor.quote.length
+                    state.writeManuscript(bookId, chapterId, latest.text.replaceRange(anchor.offset, end, revised),
+                        ManuscriptEdit(anchor.offset, end, anchor.offset + revised.length)) { history.record(it, false) }
+                }
+                paragraphEdit = null
+                activeParagraph = null
+            }, confirmEnabled = revised.isNotBlank())
+        }
+    }
+    related?.let { anchor ->
+        val note = chapter.feedback.firstOrNull { it.anchor.locate(chapter.text) == anchor.offset }
+        val links = book.materials.filter { item ->
+            item.anchors.any { it.chapterId == chapterId && it.locate(chapter.text) == anchor.offset }
+        }
+        val draft = pending.firstOrNull { it.decision == ParagraphDecision.Pending && it.anchor == anchor }
+        WritingDialog("本段相关", { related = null }) {
+            note?.prompt?.takeIf(String::isNotBlank)?.let { WritingCaption("改稿提示"); Text(it) }
+            note?.annotation?.takeIf(String::isNotBlank)?.let { WritingCaption("批注"); Text(it) }
+            links.forEach { item -> WritingCaption(item.kind.label); Text(item.title) }
+            if (draft != null) TopBarActionButton(Icons.Rounded.RateReview, "查看本段候选", onClick = {
+                related = null
+                reviewAt(anchor.offset)
+            })
+            if (note?.prompt.isNullOrBlank() && note?.annotation.isNullOrBlank() && links.isEmpty() && draft == null) {
+                WritingCaption("本段暂无提示、批注、关联资料或待审候选。")
+            }
+        }
+    }
     if (handoff) WritingHandoffDialog(chapter.handoff, { handoff = false }) { value ->
         state.editChapter(bookId, chapterId) { it.copy(handoff = value) }
         handoff = false
+    }
+}
+
+@Composable
+private fun WritingEditorPanel(title: String, modifier: Modifier, wide: Boolean, close: () -> Unit, content: @Composable () -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    Column(modifier.fillMaxHeight().then(if (wide) Modifier else Modifier.squircleClip(22.dp))
+        .background(if (wide) colors.surfaceContainer else colors.surface)) {
+        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 2.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(title, Modifier.weight(1f), style = MiuixTheme.textStyles.title3)
+            TopBarActionButton(MiuixIcons.Glass.Close, "关闭$title", onClick = close)
+        }
+        HorizontalDivider()
+        content()
     }
 }
 
@@ -565,38 +770,47 @@ private fun LazyListScope.chapterCandidate(state: WritingViewModel, bookId: Stri
 }
 
 private fun LazyListScope.paragraphReviews(
-    drafts: List<ParagraphDraft>, focused: String?, selected: Set<String>, focus: (String) -> Unit,
+    drafts: List<ParagraphDraft>, selected: Set<String>, label: (ParagraphDraft) -> String,
+    editing: String?, toggleEdit: (String) -> Unit,
     change: (String, (ParagraphDraft) -> ParagraphDraft) -> Unit, accept: (Set<String>) -> Unit,
-    retry: (ParagraphDraft) -> Unit, busy: Boolean, showAll: Boolean = false,
+    retry: (ParagraphDraft) -> Unit, busy: Boolean,
 ) {
     if (drafts.isEmpty()) return
     item("batch-heading") {
-        SmallTitle("逐段审批")
-        if (selected.isNotEmpty()) TextButton("采用所选 ${selected.size} 段", onClick = { accept(selected) })
+        if (selected.isNotEmpty()) Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text("已选 ${selected.size} 段", Modifier.weight(1f), style = MiuixTheme.textStyles.footnote1)
+            TopBarActionButton(MiuixIcons.Glass.Ok, "采用所选 ${selected.size} 段", onClick = { accept(selected) })
+        }
     }
     items(drafts, key = { it.id }) { draft ->
         val live = draft.decision == ParagraphDecision.Pending
         WritingSection {
-            WritingEntry(if (live) draft.anchor.quote.take(44) else "原段已变化", if (live) null else draft.anchor.quote.take(60)) {
-                focus(draft.id)
-            }
-            if (showAll || focused == draft.id || drafts.size == 1) {
-                WritingCaption("原文")
-                val changed = remember(draft.anchor.quote, draft.text) { manuscriptEdit(draft.anchor.quote, draft.text) }
-                ReviewExcerpt(draft.anchor.quote, changed.start, changed.beforeEnd, MiuixTheme.colorScheme.error.copy(alpha = 0.13f))
-                if (showAll) {
-                    WritingCaption("改后")
-                    ReviewExcerpt(draft.text, changed.start, changed.afterEnd, MiuixTheme.colorScheme.primary.copy(alpha = 0.17f))
-                }
+            Text(label(draft), style = MiuixTheme.textStyles.title3)
+            if (!live) WritingCaption("正文已更新，需重新选择原段生成")
+            WritingCaption("原文")
+            val changed = remember(draft.anchor.quote, draft.text) { manuscriptEdit(draft.anchor.quote, draft.text) }
+            ReviewExcerpt(draft.anchor.quote, changed.start, changed.beforeEnd, MiuixTheme.colorScheme.error.copy(alpha = 0.13f))
+            if (editing == draft.id) {
                 SettingsTextField("候选稿", draft.text, singleLine = false) { value -> change(draft.id) { it.copy(text = value) } }
-                if (live) CheckboxPreference(title = "选入本次采用", checked = draft.selected,
-                    onCheckedChange = { value -> change(draft.id) { it.copy(selected = value) } })
-                WritingActions {
-                    if (live) TextButton("采用本段", enabled = draft.text.isNotBlank(),
-                        colors = ButtonDefaults.textButtonColorsPrimary(), onClick = { accept(setOf(draft.id)) })
-                    TextButton("拒绝", onClick = { change(draft.id) { it.copy(decision = ParagraphDecision.Rejected, selected = false) } })
-                    TextButton(if (live) "重生成" else "重新选择原段", enabled = !busy, onClick = { retry(draft) })
-                }
+            } else {
+                WritingCaption("AI 候选")
+                ReviewExcerpt(draft.text, changed.start, changed.afterEnd, MiuixTheme.colorScheme.primary.copy(alpha = 0.17f))
+            }
+            if (live) CheckboxPreference(title = "选入本次采用", checked = draft.selected,
+                onCheckedChange = { value -> change(draft.id) { it.copy(selected = value) } })
+            WritingActions {
+                val primary = MiuixTheme.colorScheme.primary
+                if (live) TopBarActionButton(MiuixIcons.Glass.Ok, "采用本段", enabled = draft.text.isNotBlank(),
+                    tint = primary, onClick = { accept(setOf(draft.id)) })
+                TopBarActionButton(MiuixIcons.Glass.Edit, if (editing == draft.id) "收起候选编辑" else "修改候选",
+                    tint = if (editing == draft.id) primary else MiuixTheme.colorScheme.onSurface,
+                    onClick = { toggleEdit(draft.id) })
+                TopBarActionButton(MiuixIcons.Glass.Close, "拒绝本段", onClick = {
+                    change(draft.id) { it.copy(decision = ParagraphDecision.Rejected, selected = false) }
+                })
+                TopBarActionButton(MiuixIcons.Glass.Refresh, if (live) "重生成" else "重新选择原段",
+                    enabled = !busy, onClick = { retry(draft) })
             }
         }
     }

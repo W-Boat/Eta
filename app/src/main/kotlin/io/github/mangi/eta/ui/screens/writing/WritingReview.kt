@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.ui.components.DialogActions
 import io.github.mangi.eta.ui.components.SettingsTextField
+import io.github.mangi.eta.ui.components.TopBarActionButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -118,46 +121,57 @@ internal fun WritingChapterSettings(
     }
 }
 
+internal enum class ParagraphFeedbackField(val title: String) {
+    Prompt("本段改稿提示"),
+    Annotation("本段批注"),
+    Foreshadow("本段伏笔"),
+}
+
 @Composable
 internal fun WritingFeedbackDialog(
     book: WritingBook,
     chapter: WritingChapter,
     anchor: WritingAnchor,
+    field: ParagraphFeedbackField,
     dismiss: () -> Unit,
     save: (WritingFeedback, String?, String) -> Unit,
+    rewrite: ((String) -> Unit)?,
 ) {
     val latest = chapter.feedback.firstOrNull { it.anchor.locate(chapter.text) == anchor.offset }
     var prompt by rememberSaveable { mutableStateOf(latest?.prompt.orEmpty()) }
     var annotation by rememberSaveable { mutableStateOf(latest?.annotation.orEmpty()) }
-    var vote by rememberSaveable { mutableStateOf(latest?.vote ?: 0) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var newTitle by rememberSaveable { mutableStateOf("") }
-    WritingDialog("段落反馈", dismiss) {
+    WritingDialog(field.title, dismiss) {
         WritingCaption(anchor.quote.take(250))
-        SettingsTextField("改稿提示", prompt, singleLine = false) { prompt = it }
-        SettingsTextField("批注", annotation, singleLine = false) { annotation = it }
-        WritingActions {
-            TextButton(if (vote == 1) "已赞" else "赞", onClick = { vote = if (vote == 1) 0 else 1 })
-            TextButton(if (vote == -1) "已踩" else "踩", onClick = { vote = if (vote == -1) 0 else -1 })
-        }
-        SettingsTextField("新增伏笔（可选）", newTitle) { newTitle = it }
-        val linkable = book.materials.filter { it.kind in setOf(
-            WritingMaterialKind.Foreshadow, WritingMaterialKind.Character, WritingMaterialKind.Setting,
-            WritingMaterialKind.Worldbook, WritingMaterialKind.Event,
-        ) }
-        if (linkable.isNotEmpty()) {
-            WritingCaption("链接到已有资料")
-            WritingActions {
-                linkable.forEach { item ->
-                    val label = "${item.kind.label} · ${item.title}"
-                    TextButton(if (selected == item.id) "✓ $label" else label, onClick = {
-                        selected = if (selected == item.id) null else item.id
-                        newTitle = ""
-                    })
+        when (field) {
+            ParagraphFeedbackField.Prompt -> {
+                SettingsTextField("改稿提示", prompt, singleLine = false) { prompt = it }
+                if (rewrite != null) TopBarActionButton(Icons.Rounded.AutoAwesome, "生成本段候选", onClick = {
+                    save(WritingFeedback(anchor, prompt, annotation, latest?.vote ?: 0), null, "")
+                    rewrite(prompt)
+                })
+            }
+            ParagraphFeedbackField.Annotation -> SettingsTextField("批注", annotation, singleLine = false) { annotation = it }
+            ParagraphFeedbackField.Foreshadow -> {
+                SettingsTextField("新增伏笔", newTitle) {
+                    newTitle = it
+                    if (it.isNotBlank()) selected = null
+                }
+                val foreshadows = book.materials.filter { it.kind == WritingMaterialKind.Foreshadow }
+                if (foreshadows.isNotEmpty()) {
+                    WritingCaption("关联已有伏笔")
+                    foreshadows.forEach { item ->
+                        WritingEntry(item.title, if (selected == item.id) "已选择" else null) {
+                            selected = item.id.takeUnless { it == selected }
+                            newTitle = ""
+                        }
+                    }
                 }
             }
         }
-        DialogActions("保存", dismiss, { save(WritingFeedback(anchor, prompt, annotation, vote), selected, newTitle) })
+        DialogActions("保存", dismiss, { save(WritingFeedback(anchor, prompt, annotation, latest?.vote ?: 0), selected, newTitle) },
+            confirmEnabled = field != ParagraphFeedbackField.Foreshadow || selected != null || newTitle.isNotBlank())
     }
 }
 
