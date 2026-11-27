@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Edit
@@ -28,9 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.ui.components.DialogActions
+import io.github.mangi.eta.ui.components.PreferenceGroupItem
 import io.github.mangi.eta.ui.components.ScaffoldPage
 import io.github.mangi.eta.ui.components.SettingsTextField
 import io.github.mangi.eta.ui.components.TopBarActionButton
@@ -210,9 +211,10 @@ internal fun WritingDeskScreen(state: WritingViewModel, bookId: String, navigate
                 val groups = sorted.groupBy { it.anchors.firstOrNull()?.chapterId }
                 if (groups.isEmpty()) item { DeskGroup("剧情事件") { DeskParagraph(null, "暂无事件") } }
                 groups.entries.forEach { (chapterId, chapters) ->
-                    item {
-                        DeskGroup(chapterId?.let(book::chapter)?.title ?: "未关联章节") {
-                            chapters.forEach { item -> WritingEntry(item.title, item.content) { openedMaterialId = item.id } }
+                    item { SmallTitle(chapterId?.let(book::chapter)?.title ?: "未关联章节") }
+                    itemsIndexed(chapters, key = { _, event -> event.id }) { index, event ->
+                        PreferenceGroupItem(isFirst = index == 0, isLast = index == chapters.lastIndex) {
+                            WritingEntry(event.title, event.content) { openedMaterialId = event.id }
                         }
                     }
                 }
@@ -255,9 +257,10 @@ internal fun WritingDeskScreen(state: WritingViewModel, bookId: String, navigate
                     DeskGroup("样本分析") { WritingEntry("分析参考样本") { sampleEdit = true } }
                 }
                 if (entries.isEmpty()) item { DeskGroup(page.label) { DeskParagraph(null, "暂无记录") } }
-                if (entries.isNotEmpty()) item("records") {
-                    DeskGroup(page.label) {
-                        entries.forEachIndexed { index, item ->
+                if (entries.isNotEmpty()) {
+                    item("record-heading") { SmallTitle(page.label) }
+                    itemsIndexed(entries, key = { _, item -> item.id }) { index, item ->
+                        PreferenceGroupItem(isFirst = index == 0, isLast = index == entries.lastIndex) {
                             val status = when (item.kind) {
                                 WritingMaterialKind.Foreshadow -> if (item.resolved) "已回收" else "未回收"
                                 WritingMaterialKind.Skill, WritingMaterialKind.Worldbook -> if (item.enabled) "已启用" else "已停用"
@@ -265,7 +268,6 @@ internal fun WritingDeskScreen(state: WritingViewModel, bookId: String, navigate
                             }
                             WritingEntry(item.title, listOfNotNull(status, item.content.take(80).takeIf(String::isNotBlank))
                                 .joinToString(" · ").takeIf(String::isNotBlank)) { openedMaterialId = item.id }
-                            if (index < entries.lastIndex) HorizontalDivider()
                         }
                     }
                 }

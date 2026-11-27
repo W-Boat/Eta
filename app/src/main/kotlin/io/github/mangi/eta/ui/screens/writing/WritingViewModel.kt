@@ -278,7 +278,7 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
         volumeId: String? = null,
         replacingDraft: String? = null,
     ) {
-        if (generation?.isActive == true) return
+        if (generation?.isCompleted == false) return
         val book = book(bookId) ?: return
         val chapter = chapterId?.let { book.chapter(it) ?: return }
         if (task == WritingTask.Draft && chapter?.summary.isNullOrBlank()) {

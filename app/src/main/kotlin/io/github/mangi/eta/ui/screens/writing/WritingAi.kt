@@ -111,7 +111,9 @@ internal fun buildWritingPrompt(
         }
         if (book.notes.isNotBlank()) add("作品设定\n${book.notes}")
         if (book.outline.isNotBlank()) add("全书大纲\n${book.outline}")
-        if (book.context.includeFeedback) chapter?.feedback.orEmpty().forEach {
+        if (book.context.includeFeedback) chapter?.feedback.orEmpty().filterNot { it.anchor.detached }.sortedByDescending { note ->
+            targets.any { it.offset == note.anchor.offset }
+        }.forEach {
             add("作者反馈\n原段：${it.anchor.quote.take(500)}\n${it.prompt}\n${it.annotation}\n评价：${it.vote}")
         }
         book.materials.filter { item ->
