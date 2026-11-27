@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import io.github.mangi.eta.R
 import io.github.mangi.eta.ui.components.DialogActions
@@ -53,6 +54,9 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
+import top.yukonga.miuix.kmp.basic.InputField
+import top.yukonga.miuix.kmp.basic.SearchBar
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.glass.GlassDialog
@@ -67,7 +71,7 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
     var creating by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { it?.let(state::readImport) }
-    val books = state.books.filter { it.title.contains(query, ignoreCase = true) }
+    val books = state.books.filter { it.title.contains(query.trim(), ignoreCase = true) }.sortedByDescending { it.updated }
     fun openBook(id: String) = navigate(AppRoute.WritingBook(id))
 
     ScaffoldPage(
@@ -86,11 +90,18 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
     ) {
         item { WritingNotice(state) }
         if (state.loading) item { WritingLoading() }
-        if (state.books.isNotEmpty()) item {
-            WritingSection {
-                SettingsTextField(label = "搜索作品", value = query) { query = it }
-            }
+        if (state.books.isNotEmpty()) item("search") {
+            SearchBar(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                insideMargin = DpSize(0.dp, 0.dp),
+                expanded = false,
+                onExpandedChange = {},
+                inputField = { InputField(query = query, onQueryChange = { query = it }, onSearch = { query = it },
+                    expanded = false, onExpandedChange = {}, label = "搜索作品") },
+                content = {},
+            )
         }
+        if (books.isNotEmpty()) item("shelf-heading") { SmallTitle("我的作品") }
         if (state.ready && books.isEmpty()) item {
             ListEmptyState(
                 title = if (query.isBlank()) "书架为空" else "没有匹配的作品",
@@ -105,10 +116,10 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { book ->
                         Card(modifier = Modifier.weight(1f).clickable { openBook(book.id) }) {
-                            WritingCover(book, Modifier.fillMaxWidth().aspectRatio(1.25f))
+                            WritingCover(book, Modifier.fillMaxWidth().aspectRatio(0.92f))
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                WritingCaption("${book.volumes.size} 卷 · ${book.chapters.size} 章")
+                                WritingCaption(book.activeChapter()?.title.orEmpty())
                             }
                         }
                     }
@@ -124,7 +135,7 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
                         WritingCover(book, Modifier.width(54.dp).aspectRatio(0.8f))
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(book.title)
-                            WritingCaption("${book.volumes.size} 卷 · ${book.chapters.size} 章")
+                            WritingCaption(book.activeChapter()?.title.orEmpty())
                         }
                     }
                 }
@@ -209,7 +220,7 @@ internal fun WritingDialog(title: String, dismiss: () -> Unit, content: @Composa
 internal fun WritingNameDialog(title: String, label: String, initial: String, dismiss: () -> Unit, save: (String) -> Unit) {
     var value by rememberSaveable(initial) { mutableStateOf(initial) }
     WritingDialog(title, dismiss) {
-        SettingsTextField(label, value) { value = it }
+        SettingsTextField(label, value, inputTransformation = null) { value = it }
         DialogActions("保存", dismiss, { save(value.trim()) }, confirmEnabled = value.isNotBlank())
     }
 }

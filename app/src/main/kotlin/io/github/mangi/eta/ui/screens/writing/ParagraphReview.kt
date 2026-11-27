@@ -22,6 +22,22 @@ internal data class ManuscriptEdit(val start: Int, val beforeEnd: Int, val after
     val shift get() = afterEnd - beforeEnd
 }
 
+internal fun WritingAnchor.shifted(edit: ManuscriptEdit): WritingAnchor {
+    if (detached) return this
+    return when {
+        edit.beforeEnd <= offset -> copy(offset = offset + edit.shift)
+        edit.start >= offset + quote.length -> this
+        else -> copy(offset = edit.start.coerceAtMost(offset), detached = true)
+    }
+}
+
+internal fun WritingAnchor.afterParagraphReplacement(edit: ManuscriptEdit, replacement: String): WritingAnchor =
+    if (!detached && offset == edit.start && offset + quote.length == edit.beforeEnd) copy(quote = replacement)
+    else shifted(edit)
+
+internal fun ParagraphDraft.replacement(): String =
+    anchor.quote.takeWhile { it == ' ' || it == '\t' || it == '　' } + text.trim()
+
 internal fun manuscriptEdit(before: String, after: String): ManuscriptEdit {
     var start = 0
     while (start < minOf(before.length, after.length) && before[start] == after[start]) start++
@@ -37,7 +53,7 @@ internal fun manuscriptEdit(before: String, after: String): ManuscriptEdit {
 internal fun WritingChapter.migrateParagraphDrafts(): WritingChapter {
     val legacy = candidate ?: return this
     if (legacy.targets.isEmpty() || legacy.targets.size != legacy.changes.size) return this
-    val valid = legacy.original == text && legacy.targets.all { it.chapterId == id && text.startsWith(it.quote, it.offset) }
+    val valid = legacy.original == text && writingParagraphs(this).toSet().containsAll(legacy.targets)
     if (!valid) return this
     return copy(candidate = null, drafts = drafts + legacy.targets.zip(legacy.changes).map { (anchor, prose) ->
         ParagraphDraft(anchor = anchor, text = prose, instruction = legacy.instruction)
@@ -48,22 +64,16 @@ internal fun WritingChapter.withManuscript(newText: String, edit: ManuscriptEdit
     if (newText == text) return this
     val base = migrateParagraphDrafts()
     val next = base.copy(text = newText)
+        .copy(feedback = base.feedback.map { it.copy(anchor = it.anchor.shifted(edit)) })
     if (base.drafts.none { it.decision == ParagraphDecision.Pending }) return next
     val current = writingParagraphs(next).associateBy { it.offset }
     return next.copy(drafts = base.drafts.map { draft ->
         if (draft.decision != ParagraphDecision.Pending) return@map draft
-        val anchor = draft.anchor
-        val offset = when {
-            edit.beforeEnd <= anchor.offset -> anchor.offset + edit.shift
-            edit.start >= anchor.offset + anchor.quote.length -> anchor.offset
-            else -> edit.start.coerceAtMost(anchor.offset)
-        }
-        if ((edit.beforeEnd <= anchor.offset || edit.start >= anchor.offset + anchor.quote.length) &&
-            current[offset] == anchor.copy(offset = offset)
-        ) {
-            draft.copy(anchor = anchor.copy(offset = offset))
+        val anchor = draft.anchor.shifted(edit)
+        if (current[anchor.offset] == anchor) {
+            draft.copy(anchor = anchor)
         } else {
-            draft.copy(anchor = anchor.copy(offset = offset), decision = ParagraphDecision.Stale, selected = false)
+            draft.copy(anchor = anchor, decision = ParagraphDecision.Stale, selected = false)
         }
     })
 }
@@ -72,6 +82,7 @@ internal fun WritingChapter.receiveDrafts(
     result: WritingCandidate,
     captured: WritingChapter,
     replacing: String?,
+    trackedEdits: List<ManuscriptEdit>? = null,
 ): WritingChapter {
     val targets = if (result.targets.isNotEmpty()) result.targets else {
         if (result.task != WritingTask.Rewrite) return copy(candidate = result)
@@ -95,14 +106,18 @@ internal fun WritingChapter.receiveDrafts(
         }
         val pairs = before.zip(after).filter { (old, new) -> old.quote != new.quote }
         if (pairs.isEmpty()) return this
-        return receiveDrafts(result.copy(targets = pairs.map { it.first }, changes = pairs.map { it.second.quote }), captured, replacing)
+        return receiveDrafts(result.copy(targets = pairs.map { it.first }, changes = pairs.map { it.second.quote }),
+            captured, replacing, trackedEdits)
     }
+    val current = writingParagraphs(this).associateBy(WritingAnchor::offset)
     val incoming = targets.zip(result.changes).map { (anchor, prose) ->
+        val shifted = trackedEdits?.fold(anchor) { value, edit -> value.shifted(edit) } ?: anchor
         ParagraphDraft(
-            anchor = anchor,
+            anchor = shifted,
             text = prose,
             instruction = result.instruction,
-            decision = if (text == captured.text) ParagraphDecision.Pending else ParagraphDecision.Stale,
+            decision = if ((text == captured.text || trackedEdits != null) && current[shifted.offset] == shifted)
+                ParagraphDecision.Pending else ParagraphDecision.Stale,
         )
     }
     // Preserve prior drafts unless the author explicitly regenerated that draft successfully.
@@ -126,10 +141,11 @@ internal fun WritingChapter.acceptParagraphs(ids: Set<String>): WritingChapter {
     for (draft in ordered) {
         val start = draft.anchor.offset
         val end = start + draft.anchor.quote.length
-        val indentation = draft.anchor.quote.takeWhile { it == ' ' || it == '\t' || it == '　' }
-        val replacement = indentation + draft.text.trim()
+        val replacement = draft.replacement()
         val revised = next.text.replaceRange(start, end, replacement)
-        next = next.withManuscript(revised, ManuscriptEdit(start, end, start + replacement.length))
+        val edit = ManuscriptEdit(start, end, start + replacement.length)
+        val feedback = next.feedback.map { note -> note.copy(anchor = note.anchor.afterParagraphReplacement(edit, replacement)) }
+        next = next.withManuscript(revised, edit).copy(feedback = feedback)
     }
     return next.copy(versions = (listOf(WritingVersion(text, "逐段采用前")) + versions).take(20))
 }

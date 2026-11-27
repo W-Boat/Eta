@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityManager
 import android.view.inputmethod.BaseInputConnection
 import android.widget.EditText
@@ -81,7 +82,7 @@ internal fun ManuscriptEditor(
     )
 }
 
-private class ManuscriptEditText(context: Context) : EditText(context) {
+internal class ManuscriptEditText(context: Context) : EditText(context) {
     private val density = resources.displayMetrics.density
     private val gutter = (27 * density).toInt()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -92,6 +93,9 @@ private class ManuscriptEditText(context: Context) : EditText(context) {
     private var highlighting = false
     private var updating = false
     private var markerDown: Int? = null
+    private var downX = 0f
+    private var downY = 0f
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var markers = emptyList<ManuscriptMarker>()
     private var accent = Color.BLACK
     private var multiSelect = false
@@ -273,23 +277,31 @@ private class ManuscriptEditText(context: Context) : EditText(context) {
         val line = content.getLineForVertical(event.y.toInt() + scrollY - totalPaddingTop)
         val lineOffset = content.getLineStart(line)
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            downX = event.x
+            downY = event.y
             markerDown = if (multiSelect || event.x < gutter) {
                 markers.firstOrNull { content.getLineForOffset(it.offset.coerceIn(0, length())) == line }?.offset
                     ?: lineOffset.takeIf { multiSelect }
             } else null
+            return super.onTouchEvent(event)
         }
         val hit = markerDown ?: return super.onTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP) {
             markerDown = null
+            val cancel = MotionEvent.obtain(event)
+            cancel.action = MotionEvent.ACTION_CANCEL
+            super.onTouchEvent(cancel)
+            cancel.recycle()
             if (multiSelect) paragraphTap?.invoke(hit) else markerSelected?.invoke(hit)
             performClick()
         } else if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
             markerDown = null
-        } else if (event.actionMasked == MotionEvent.ACTION_MOVE && multiSelect &&
-            content.getLineForOffset(hit.coerceIn(0, length())) != line
+            return super.onTouchEvent(event)
+        } else if (event.actionMasked == MotionEvent.ACTION_MOVE &&
+            (kotlin.math.abs(event.x - downX) > touchSlop || kotlin.math.abs(event.y - downY) > touchSlop)
         ) {
-            // Let the scroll gesture continue without changing the selection.
             markerDown = null
+            return super.onTouchEvent(event)
         }
         return true
     }

@@ -141,12 +141,16 @@ internal fun WritingFeedbackDialog(
             TextButton(if (vote == -1) "已踩" else "踩", onClick = { vote = if (vote == -1) 0 else -1 })
         }
         SettingsTextField("新增伏笔（可选）", newTitle) { newTitle = it }
-        val foreshadows = book.materials.filter { it.kind == WritingMaterialKind.Foreshadow }
-        if (foreshadows.isNotEmpty()) {
-            WritingCaption("追加锚点到现有伏笔")
+        val linkable = book.materials.filter { it.kind in setOf(
+            WritingMaterialKind.Foreshadow, WritingMaterialKind.Character, WritingMaterialKind.Setting,
+            WritingMaterialKind.Worldbook, WritingMaterialKind.Event,
+        ) }
+        if (linkable.isNotEmpty()) {
+            WritingCaption("链接到已有资料")
             WritingActions {
-                foreshadows.forEach { item ->
-                    TextButton(if (selected == item.id) "✓ ${item.title}" else item.title, onClick = {
+                linkable.forEach { item ->
+                    val label = "${item.kind.label} · ${item.title}"
+                    TextButton(if (selected == item.id) "✓ $label" else label, onClick = {
                         selected = if (selected == item.id) null else item.id
                         newTitle = ""
                     })

@@ -74,4 +74,16 @@ class ParagraphReviewTest {
         assertFalse(aligned.drafts.isEmpty())
         assertEquals("第一段", aligned.drafts.single().anchor.quote)
     }
+
+    @Test
+    fun tracksEditsThatHappenDuringGenerationWithoutMatchingDuplicateProseElsewhere() {
+        val captured = WritingChapter(title = "开篇", text = "重句\n重句")
+        val target = writingParagraphs(captured).last()
+        val result = WritingCandidate(WritingTask.Rewrite, captured.text, "", targets = listOf(target), changes = listOf("末句"))
+        val edited = captured.copy(text = "新段\n" + captured.text)
+        val incoming = edited.receiveDrafts(result, captured, replacing = null, trackedEdits = listOf(ManuscriptEdit(0, 0, 3)))
+        assertEquals(target.offset + 3, incoming.drafts.single().anchor.offset)
+        assertEquals(ParagraphDecision.Pending, incoming.drafts.single().decision)
+        assertEquals("新段\n重句\n末句", incoming.acceptParagraphs(setOf(incoming.drafts.single().id)).text)
+    }
 }

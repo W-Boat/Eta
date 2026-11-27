@@ -45,6 +45,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import io.github.mangi.eta.R
@@ -87,6 +90,7 @@ internal fun WritingChapterScreen(
         }
     }
     if (book == null || chapter == null) {
+        LaunchedEffect(state.ready, book == null) { if (state.ready && book == null) back() }
         PageScaffold(title = stringResource(R.string.conversation_dock_writing), onBack = back, compactTitle = true) { padding, _, _ ->
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 if (state.loading) WritingLoading() else Text("找不到章节")
@@ -111,6 +115,7 @@ internal fun WritingChapterScreen(
     var selecting by rememberSaveable(chapter.id) { mutableStateOf(false) }
     var picked by remember(chapter.id) { mutableStateOf(emptySet<WritingAnchor>()) }
     var pickedDraft by rememberSaveable(chapter.id) { mutableStateOf<String?>(null) }
+    var replacingDraft by rememberSaveable(chapter.id) { mutableStateOf<String?>(null) }
     var feedback by remember(chapter.id) { mutableStateOf<WritingAnchor?>(null) }
     var jump by remember(chapter.id) { mutableStateOf<ManuscriptJump?>(null) }
     var position by remember(chapter.id) { mutableStateOf(chapter.position) }
@@ -118,7 +123,7 @@ internal fun WritingChapterScreen(
     var instruction by rememberSaveable(chapter.id) { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
     val history = remember(chapter.id) { ManuscriptHistory() }
-    val paragraphs = remember(chapter.text) { writingParagraphs(chapter) }
+    var paragraphs by remember(chapter.id) { mutableStateOf(emptyList<WritingAnchor>()) }
     val pending = chapter.drafts.filter { it.decision in setOf(ParagraphDecision.Pending, ParagraphDecision.Stale) }
     val selectedIds = pending.filter { it.selected && it.decision == ParagraphDecision.Pending }.mapTo(hashSetOf()) { it.id }
     val bookTitle = book.title
@@ -127,8 +132,10 @@ internal fun WritingChapterScreen(
     val wordSubtitle = words?.let { if (goal > 0) "$it / $goal 字" else "$it 字" }.orEmpty()
 
     LaunchedEffect(chapter.text) {
-        delay(90)
-        words = withContext(Dispatchers.Default) { writingWordCount(chapter.text) }
+        delay(80)
+        val measured = withContext(Dispatchers.Default) { writingWordCount(chapter.text) to writingParagraphs(chapter) }
+        words = measured.first
+        paragraphs = measured.second
     }
     fun closeLayer() = when {
         fullReview -> { fullReview = false; drawer = "assist"; true }
@@ -140,6 +147,20 @@ internal fun WritingChapterScreen(
     BackHandler(enabled = fullReview || selecting || drawer != null || preview) { closeLayer() }
     fun selectChapter(id: String) { state.openChapter(bookId, id); drawer = null; preview = false }
     fun paragraphAt(offset: Int) = paragraphs.firstOrNull { offset in it.offset..(it.offset + it.quote.length) }
+    fun retryDraft(draft: ParagraphDraft) {
+        if (draft.decision == ParagraphDecision.Pending) {
+            val target = writingParagraphs(chapter).firstOrNull { it == draft.anchor } ?: return
+            state.generate(bookId, chapterId, WritingTask.Rewrite, draft.instruction, listOf(target), replacingDraft = draft.id)
+        } else {
+            fullReview = false
+            drawer = null
+            selecting = true
+            picked = emptySet()
+            replacingDraft = draft.id
+            instruction = draft.instruction
+            keyboard?.hide()
+        }
+    }
     fun reviewAt(offset: Int) {
         val draft = pending.firstOrNull { it.anchor.offset == offset }
         if (draft != null) { pickedDraft = draft.id; drawer = "assist"; keyboard?.hide() }
@@ -155,7 +176,12 @@ internal fun WritingChapterScreen(
     }
     fun applyDrafts(ids: Set<String>) {
         val before = state.book(bookId)?.chapter(chapterId) ?: return
-        if (state.adoptParagraphs(bookId, chapterId, ids)) history.record(before, false)
+        if (state.adoptParagraphs(bookId, chapterId, ids)) {
+            history.record(before, false)
+            before.drafts.filter { it.id in ids }.minOfOrNull { it.anchor.offset }?.let {
+                jump = ManuscriptJump(it)
+            }
+        }
     }
     fun restore(snapshot: ManuscriptFrame) {
         state.editChapter(bookId, chapterId) { current -> snapshot.restore(current) }
@@ -173,7 +199,9 @@ internal fun WritingChapterScreen(
             )) else updated.copy(materials = updated.materials.map {
                 if (it.id == existing && it.anchors.none { anchor ->
                         anchor.chapterId == note.anchor.chapterId && anchor.offset == note.anchor.offset
-                    }) it.copy(anchors = it.anchors + note.anchor.copy(stage = ForeshadowStage.Echo)) else it
+                    }) it.copy(anchors = it.anchors + note.anchor.copy(
+                        stage = ForeshadowStage.Echo.takeIf { _ -> it.kind == WritingMaterialKind.Foreshadow },
+                    )) else it
             })
         }
         feedback = null
@@ -202,8 +230,9 @@ internal fun WritingChapterScreen(
     ) { padding, _, _ ->
         val colors = MiuixTheme.colorScheme
         BoxWithConstraints(Modifier.fillMaxSize().padding(padding).background(colors.surface)) {
-            val wide = maxWidth >= 840.dp
-            val paneWidth = if (wide) 310.dp else (maxWidth * 0.86f).coerceAtMost(340.dp)
+            val viewportWidth = maxWidth
+            val wide = viewportWidth >= 840.dp
+            val paneWidth = if (wide) 310.dp else (viewportWidth * 0.86f).coerceAtMost(340.dp)
             val edge = if (drawer == "contents") Alignment.CenterStart else Alignment.CenterEnd
             val startInset = if (wide && drawer == "contents") paneWidth else 0.dp
             val endInset = if (wide && drawer == "assist") paneWidth else 0.dp
@@ -221,10 +250,7 @@ internal fun WritingChapterScreen(
                                 markers = markers,
                                 jump = jump,
                                 onEdit = { text, patch ->
-                                    state.editChapter(bookId, chapterId) { current ->
-                                        history.record(current, true)
-                                        current.withManuscript(text, patch)
-                                    }
+                                    state.writeManuscript(bookId, chapterId, text, patch) { history.record(it, true) }
                                 },
                                 onPosition = { moved ->
                                     position = moved
@@ -244,13 +270,13 @@ internal fun WritingChapterScreen(
                             }
                         }
                     }
-                    if (livePreview && !preview && maxWidth >= 620.dp) {
+                    if (livePreview && !preview && viewportWidth - startInset - endInset >= 620.dp) {
                         WritingMarkdown(chapter.text, Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(24.dp))
                     }
                 }
                 if (selecting) Card(Modifier.align(Alignment.BottomCenter).padding(12.dp)) {
                     Row(Modifier.padding(horizontal = 9.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        TextButton("取消", onClick = { selecting = false; picked = emptySet() })
+                        TextButton("取消", onClick = { selecting = false; picked = emptySet(); replacingDraft = null })
                         TextButton("改写所选 ${picked.size} 段", enabled = picked.isNotEmpty(), onClick = {
                             selecting = false
                             drawer = "assist"
@@ -269,7 +295,8 @@ internal fun WritingChapterScreen(
                     if (drawer == "contents") {
                         LazyColumn {
                             item("book") {
-                                WritingEntry(bookTitle, if (state.saving) "正在保存" else "书籍信息与导出") {
+                                val facts = "${book.volumes.size} 卷 · ${book.chapters.size} 章"
+                                WritingEntry(bookTitle, if (state.saving) "$facts · 正在保存" else "$facts · 书籍设置与导出") {
                                     navigate(AppRoute.WritingBookSettings(bookId))
                                 }
                             }
@@ -301,12 +328,7 @@ internal fun WritingChapterScreen(
                             paragraphReviews(pending, pickedDraft, selectedIds, ::cycleReview,
                                 change = { id, action -> state.changeDraft(bookId, chapterId, id, action) },
                                 accept = ::applyDrafts,
-                                retry = { draft ->
-                                    val target = paragraphAt(draft.anchor.offset)
-                                    if (target != null) state.generate(bookId, chapterId, WritingTask.Rewrite,
-                                        draft.instruction, listOf(target), replacingDraft = draft.id)
-                                    else { drawer = null; selecting = true; picked = emptySet() }
-                                },
+                                retry = ::retryDraft,
                                 busy = state.generating != null,
                             )
                             chapterCandidate(state, bookId, chapter, history)
@@ -322,8 +344,15 @@ internal fun WritingChapterScreen(
                                     if (range.isNotEmpty() || target != null) WritingEntry(
                                         if (range.isNotEmpty()) "改写所选 ${range.size} 段" else "改写光标所在段",
                                     ) {
-                                        if (available) state.generate(bookId, chapterId, WritingTask.Rewrite, instruction,
-                                            range.ifEmpty { listOfNotNull(target) })
+                                        if (available) {
+                                            val valid = writingParagraphs(chapter).toSet()
+                                            val targets = range.ifEmpty { listOfNotNull(target) }.filter { it in valid }
+                                            if (targets.isNotEmpty()) {
+                                                state.generate(bookId, chapterId, WritingTask.Rewrite, instruction, targets,
+                                                    replacingDraft = replacingDraft)
+                                                replacingDraft = null
+                                            }
+                                        }
                                     }
                                     WritingEntry("在正文多选段落") { drawer = null; selecting = true; keyboard?.hide() }
                                     if (target != null) WritingEntry("本段批注与伏笔") { feedback = target }
@@ -367,15 +396,11 @@ internal fun WritingChapterScreen(
                             focus = ::cycleReview,
                             change = { id, action -> state.changeDraft(bookId, chapterId, id, action) },
                             accept = ::applyDrafts,
-                            retry = { draft ->
-                                val target = paragraphAt(draft.anchor.offset)
-                                if (target != null) state.generate(bookId, chapterId, WritingTask.Rewrite,
-                                    draft.instruction, listOf(target), replacingDraft = draft.id)
-                            },
+                            retry = ::retryDraft,
                             busy = state.generating != null,
                             showAll = true,
                         )
-                        chapterCandidate(state, bookId, chapter, history)
+                        chapterCandidate(state, bookId, chapter, history, compare = true)
                     }
                 }
             }
@@ -396,8 +421,8 @@ internal fun WritingChapterScreen(
             val end = maxOf(position.start, position.end).coerceIn(start, chapter.text.length)
             val line = "\n\n---\n\n"
             history.record(chapter, false)
-            state.editChapter(bookId, chapterId) { it.withManuscript(it.text.replaceRange(start, end, line),
-                ManuscriptEdit(start, end, start + line.length)) }
+            state.writeManuscript(bookId, chapterId, chapter.text.replaceRange(start, end, line),
+                ManuscriptEdit(start, end, start + line.length))
             jump = ManuscriptJump(start + line.length)
         }
     }
@@ -457,14 +482,16 @@ internal fun WritingChapterScreen(
     }
 }
 
-private fun LazyListScope.chapterCandidate(state: WritingViewModel, bookId: String, chapter: WritingChapter, history: ManuscriptHistory) {
+private fun LazyListScope.chapterCandidate(state: WritingViewModel, bookId: String, chapter: WritingChapter, history: ManuscriptHistory,
+    compare: Boolean = false,
+) {
     writingReview(chapter.candidate, state.generating == null, onAccept = { candidate ->
         val before = state.book(bookId)?.chapter(chapter.id) ?: return@writingReview
         state.review(bookId, chapter.id, candidate)
         if (state.book(bookId)?.chapter(chapter.id)?.text != before.text) history.record(before, false)
     }, onReject = { state.review(bookId, chapter.id, null) }, onRetry = {
         state.generate(bookId, chapter.id, it.task, it.instruction, it.targets)
-    })
+    }, compareInitially = compare)
 }
 
 private fun LazyListScope.paragraphReviews(
@@ -485,18 +512,32 @@ private fun LazyListScope.paragraphReviews(
             }
             if (showAll || focused == draft.id || drafts.size == 1) {
                 WritingCaption("原文")
-                Text(draft.anchor.quote)
+                val changed = remember(draft.anchor.quote, draft.text) { manuscriptEdit(draft.anchor.quote, draft.text) }
+                ReviewExcerpt(draft.anchor.quote, changed.start, changed.beforeEnd, MiuixTheme.colorScheme.error.copy(alpha = 0.13f))
+                if (showAll) {
+                    WritingCaption("改后")
+                    ReviewExcerpt(draft.text, changed.start, changed.afterEnd, MiuixTheme.colorScheme.primary.copy(alpha = 0.17f))
+                }
                 SettingsTextField("候选稿", draft.text, singleLine = false) { value -> change(draft.id) { it.copy(text = value) } }
                 if (live) CheckboxPreference(title = "选入本次采用", checked = draft.selected,
                     onCheckedChange = { value -> change(draft.id) { it.copy(selected = value) } })
                 WritingActions {
                     if (live) TextButton("采用本段", enabled = draft.text.isNotBlank(), onClick = { accept(setOf(draft.id)) })
                     TextButton("拒绝", onClick = { change(draft.id) { it.copy(decision = ParagraphDecision.Rejected, selected = false) } })
-                    TextButton("重生成", enabled = !busy, onClick = { retry(draft) })
+                    TextButton(if (live) "重生成" else "重新选择原段", enabled = !busy, onClick = { retry(draft) })
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ReviewExcerpt(text: String, start: Int, end: Int, highlight: Color) {
+    androidx.compose.foundation.text.BasicText(buildAnnotatedString {
+        append(text.substring(0, start))
+        withStyle(SpanStyle(background = highlight)) { append(text.substring(start, end)) }
+        append(text.substring(end))
+    }, style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface))
 }
 
 @Composable
@@ -519,9 +560,18 @@ private fun WritingVersionsScreen(chapter: WritingChapter, back: () -> Unit, sav
     }
 }
 
-private data class ManuscriptFrame(val text: String, val drafts: List<ParagraphDraft>, val candidate: WritingCandidate?) {
-    constructor(chapter: WritingChapter) : this(chapter.text, chapter.drafts, chapter.candidate)
-    fun restore(chapter: WritingChapter) = chapter.copy(text = text, drafts = drafts, candidate = candidate)
+private data class ManuscriptFrame(
+    val text: String, val drafts: List<ParagraphDraft>, val candidate: WritingCandidate?, val feedback: List<WritingFeedback>,
+) {
+    constructor(chapter: WritingChapter) : this(chapter.text, chapter.drafts, chapter.candidate, chapter.feedback)
+    fun restore(chapter: WritingChapter): WritingChapter {
+        val priorIds = drafts.mapTo(hashSetOf()) { it.id }
+        val lateDrafts = chapter.withManuscript(text).drafts.filterNot { it.id in priorIds }
+        val latest = chapter.drafts.associateBy { it.id }
+        return chapter.copy(text = text, drafts = drafts.map { draft ->
+            draft.copy(text = latest[draft.id]?.text ?: draft.text)
+        } + lateDrafts, candidate = chapter.candidate ?: candidate, feedback = feedback)
+    }
 }
 
 private class ManuscriptHistory {

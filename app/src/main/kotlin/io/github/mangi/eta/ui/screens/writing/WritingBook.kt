@@ -75,8 +75,10 @@ internal enum class ForeshadowStage(val label: String) { Planted("埋设"), Echo
 internal data class WritingAnchor(
     val chapterId: String, val offset: Int, val quote: String,
     val stage: ForeshadowStage? = null,
+    val detached: Boolean = false,
 ) {
     fun locate(text: String): Int? {
+        if (detached) return null
         if (offset in 0..text.length && text.startsWith(quote, offset)) return offset
         val first = text.indexOf(quote)
         return first.takeIf { it >= 0 && first == text.lastIndexOf(quote) }

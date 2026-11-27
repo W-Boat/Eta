@@ -207,11 +207,11 @@ internal fun WritingDeskScreen(state: WritingViewModel, bookId: String, navigate
                 }
             }
             DeskPage.Story -> {
-                val groups = sorted.groupBy { it.anchors.firstOrNull()?.let { anchor -> book.chapter(anchor.chapterId)?.title } ?: "未关联章节" }
+                val groups = sorted.groupBy { it.anchors.firstOrNull()?.chapterId }
                 if (groups.isEmpty()) item { DeskGroup("剧情事件") { DeskParagraph(null, "暂无事件") } }
-                groups.entries.forEach { (name, chapters) ->
+                groups.entries.forEach { (chapterId, chapters) ->
                     item {
-                        DeskGroup(name) {
+                        DeskGroup(chapterId?.let(book::chapter)?.title ?: "未关联章节") {
                             chapters.forEach { item -> WritingEntry(item.title, item.content) { openedMaterialId = item.id } }
                         }
                     }

@@ -27,6 +27,7 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
     private val changed = Channel<Unit>(Channel.CONFLATED)
     private val preferences = application.getSharedPreferences("writing", 0)
     private var generation: Job? = null
+    private var trackedManuscript: TrackedManuscript? = null
 
     var books by mutableStateOf<List<WritingBook>>(emptyList())
         private set
@@ -120,8 +121,41 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
             chapter.copy(drafts = chapter.drafts.map { if (it.id == id) change(it) else it })
         }
 
+    fun writeManuscript(
+        bookId: String, chapterId: String, text: String, patch: ManuscriptEdit,
+        beforeChange: (WritingChapter) -> Unit = {},
+    ) = edit(bookId) { book ->
+        val before = book.chapter(chapterId) ?: return@edit book
+        if (before.text == text) return@edit book
+        beforeChange(before)
+        trackedManuscript?.takeIf { it.bookId == bookId && it.chapterId == chapterId && it.text == before.text }?.let {
+            it.edits.add(patch)
+            it.text = text
+        }
+        book.changeChapter(chapterId) { it.withManuscript(text, patch) }.copy(materials = book.materials.map { item ->
+            if (item.anchors.none { it.chapterId == chapterId }) item else item.copy(anchors = item.anchors.map {
+                if (it.chapterId == chapterId) it.shifted(patch) else it
+            })
+        })
+    }
+
     fun adoptParagraphs(bookId: String, chapterId: String, ids: Set<String>): Boolean = try {
-        editChapter(bookId, chapterId) { it.acceptParagraphs(ids) }
+        edit(bookId) { book ->
+            val chapter = book.chapter(chapterId) ?: return@edit book
+            val revised = chapter.acceptParagraphs(ids)
+            val replacements = chapter.drafts.filter { it.id in ids }.sortedByDescending { it.anchor.offset }.map { draft ->
+                val text = draft.replacement()
+                val start = draft.anchor.offset
+                ManuscriptEdit(start, start + draft.anchor.quote.length, start + text.length) to text
+            }
+            book.changeChapter(chapterId) { revised }.copy(materials = book.materials.map { item ->
+                if (item.anchors.none { it.chapterId == chapterId }) item else item.copy(anchors = item.anchors.map { anchor ->
+                    if (anchor.chapterId != chapterId) anchor else replacements.fold(anchor) { ref, (patch, text) ->
+                        ref.afterParagraphReplacement(patch, text)
+                    }
+                })
+            })
+        }
         true
     } catch (failure: IllegalArgumentException) {
         notice = failure.message ?: "无法采用候选。"
@@ -252,6 +286,8 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
             return
         }
         val volume = volumeId?.let { id -> book.volumes.find { it.id == id } }
+        val tracker = chapter?.let { TrackedManuscript(bookId, it.id, it.text) }
+        trackedManuscript = tracker
         generating = task.label
         generation = viewModelScope.launch {
             try {
@@ -259,7 +295,8 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
                 if (chapterId != null) {
                     edit(bookId) {
                         it.changeChapter(chapterId) { current ->
-                            current.receiveDrafts(result, requireNotNull(chapter), replacingDraft)
+                            current.receiveDrafts(result, requireNotNull(chapter), replacingDraft,
+                                tracker?.takeIf { it.text == current.text }?.edits)
                         }
                             .copy(usage = it.usage + usage)
                     }
@@ -277,6 +314,7 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
                 notice = failure.message?.takeIf { it.startsWith("请") || it.startsWith("模型") || it.startsWith("生成") }
                     ?: "生成失败。请检查 ETA 的模型设置或缩小请求范围后重试。"
             } finally {
+                trackedManuscript = null
                 generating = null
             }
         }
@@ -343,4 +381,8 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
             notice = failure.message ?: "无法应用候选。"
         }
     }
+}
+
+private class TrackedManuscript(val bookId: String, val chapterId: String, var text: String) {
+    val edits = mutableListOf<ManuscriptEdit>()
 }
