@@ -74,7 +74,8 @@ internal fun readWritingBackup(input: String): WritingImport {
         val imported = writingJson.decodeFromJsonElement(WritingBook.serializer(), native)
         validateWritingVolumes(imported.volumes)
         return WritingImport(
-            imported.copy(id = writingId(), title = title, updated = System.currentTimeMillis()),
+            imported.copy(id = writingId(), title = title, updated = System.currentTimeMillis(),
+                volumes = imported.volumes.map { it.copy(chapters = it.chapters.map(WritingChapter::migrateParagraphDrafts)) }),
             imported.chapters.sumOf { c -> c.feedback.count { it.annotation.isNotBlank() } },
             imported.materials.count { it.kind == WritingMaterialKind.Foreshadow },
         )
@@ -105,6 +106,7 @@ internal fun readWritingBackup(input: String): WritingImport {
     val foreshadows = research.objects("foreshadows")
     val book = WritingBook(
         title = title,
+        activeChapterId = root.string("activeId").ifBlank { null },
         cover = root.string("cover"),
         outline = root.string("outline"),
         notes = root.string("notes"),
@@ -120,7 +122,13 @@ internal fun readWritingBackup(input: String): WritingImport {
                 kind = WritingMaterialKind.Foreshadow,
                 title = record.string("title").ifBlank { "伏笔" },
                 content = record.string("note").ifBlank { record.string("text") },
-                anchors = record.objects("anchors").mapNotNull { anchor(it["anchor"] as? JsonObject) },
+                anchors = record.objects("anchors").mapNotNull { entry ->
+                    anchor(entry["anchor"] as? JsonObject)?.copy(stage = when (entry.string("role")) {
+                        "回收" -> ForeshadowStage.Resolved
+                        "呼应", "线索" -> ForeshadowStage.Echo
+                        else -> ForeshadowStage.Planted
+                    })
+                },
             )
         },
         original = root,
@@ -163,7 +171,7 @@ private fun writingBackup(book: WritingBook): String {
         put("outline", book.outline)
         put("goal", book.goal)
         put("aiMode", book.aiMode)
-        put("activeId", book.chapters.firstOrNull()?.id.orEmpty())
+        put("activeId", book.activeChapter()?.id.orEmpty())
         put("volumes", JsonArray(book.volumes.map { volume ->
             buildJsonObject {
                 oldVolumes[volume.id].orEmpty().forEach { (key, value) -> put(key, value) }

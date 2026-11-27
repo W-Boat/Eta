@@ -24,8 +24,10 @@ internal data class WritingBook(
     val usage: List<WritingUsage> = emptyList(),
     val updated: Long = System.currentTimeMillis(),
     val original: JsonObject? = null,
+    val activeChapterId: String? = null,
 ) {
     val chapters get() = volumes.flatMap { it.chapters }
+    fun activeChapter() = activeChapterId?.let(::chapter) ?: chapters.firstOrNull()
     fun chapter(id: String) = volumes.firstNotNullOfOrNull { volume -> volume.chapters.find { it.id == id } }
     fun changeChapter(id: String, edit: (WritingChapter) -> WritingChapter) = copy(
         volumes = volumes.map { volume ->
@@ -53,6 +55,8 @@ internal data class WritingChapter(
     val feedback: List<WritingFeedback> = emptyList(),
     val versions: List<WritingVersion> = emptyList(),
     val candidate: WritingCandidate? = null,
+    val drafts: List<ParagraphDraft> = emptyList(),
+    val position: WritingPosition = WritingPosition(),
 )
 
 @Serializable
@@ -65,7 +69,13 @@ internal data class WritingHandoff(
 )
 
 @Serializable
-internal data class WritingAnchor(val chapterId: String, val offset: Int, val quote: String) {
+internal enum class ForeshadowStage(val label: String) { Planted("埋设"), Echo("呼应"), Resolved("回收") }
+
+@Serializable
+internal data class WritingAnchor(
+    val chapterId: String, val offset: Int, val quote: String,
+    val stage: ForeshadowStage? = null,
+) {
     fun locate(text: String): Int? {
         if (offset in 0..text.length && text.startsWith(quote, offset)) return offset
         val first = text.indexOf(quote)
@@ -98,7 +108,9 @@ internal data class WritingMaterial(
     val anchors: List<WritingAnchor> = emptyList(),
     val sourceEvent: String? = null,
     val targetEvent: String? = null,
-)
+) {
+    val resolved get() = anchors.any { it.stage == ForeshadowStage.Resolved }
+}
 
 @Serializable
 internal data class WritingContext(
@@ -147,24 +159,26 @@ internal fun WritingChapter.withText(replacement: String, label: String): Writin
     return copy(text = replacement, versions = (listOf(WritingVersion(text, label)) + versions).take(20))
 }
 
-private val paragraphSeparator = Regex("""\r?\n[\t ]*\r?\n(?:[\t ]*\r?\n)*""")
+internal val manuscriptLine = Regex("""[^\r\n]+""")
+internal val sceneDivider = Regex("""(?:[*＊][\s　]*){3,}|[-‐‑‒–—―─━]{2,}|_{3,}|={3,}|[·•]{3,}|[✦❖※◇✧]{1,5}""")
+private val codeFence = Regex("""^ {0,3}(`{3,}|~{3,})(.*)$""")
 private val wordPattern = Regex("""\p{IsHan}|[\p{L}\p{N}&&[^\p{IsHan}]]+""")
 
 internal fun writingWordCount(text: String): Int = wordPattern.findAll(text).count()
 
 internal fun writingParagraphs(chapter: WritingChapter): List<WritingAnchor> = buildList {
-    var start = 0
-    fun addParagraph(end: Int) {
-        val quote = chapter.text.substring(start, end)
-        if (quote.isNotBlank() && quote.trim() !in setOf("---", "***", "___")) {
-            add(WritingAnchor(chapter.id, start, quote))
+    var fence: String? = null
+    manuscriptLine.findAll(chapter.text).forEach { line ->
+        val marker = codeFence.matchEntire(line.value)
+        val open = fence
+        if (open != null) {
+            if (marker != null && marker.groupValues[1].startsWith(open) && marker.groupValues[2].isBlank()) fence = null
+        } else if (marker != null) {
+            fence = marker.groupValues[1]
+        } else if (line.value.isNotBlank() && !sceneDivider.matches(line.value.trim())) {
+            add(WritingAnchor(chapter.id, line.range.first, line.value))
         }
     }
-    paragraphSeparator.findAll(chapter.text).forEach { separator ->
-        addParagraph(separator.range.first)
-        start = separator.range.last + 1
-    }
-    addParagraph(chapter.text.length)
 }
 
 internal fun applyWritingChanges(text: String, candidate: WritingCandidate): String {

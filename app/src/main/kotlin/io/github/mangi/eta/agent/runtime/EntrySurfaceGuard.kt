@@ -133,7 +133,7 @@ internal class EntrySurfaceGuard private constructor(
             return EntrySurfaceGuard(packageName, logger, ownedSurfaceDismissal)
         }
 
-        private const val ETA_PACKAGE_NAME = "io.github.mangi.eta"
+        private const val ETA_PACKAGE_NAME = io.github.mangi.eta.core.ModuleConfig.ETA_PACKAGE
         private const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }

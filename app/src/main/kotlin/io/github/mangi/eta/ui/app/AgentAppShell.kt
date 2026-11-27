@@ -468,7 +468,7 @@ private fun titleForRoute(route: AppRoute?): String = when (route) {
     is AppRoute.ConversationTitleSettings -> stringResource(R.string.conversation_title_settings_title)
     is AppRoute.AssistantOverlaySettings -> stringResource(R.string.assistant_overlay_settings_title)
     is AppRoute.Characters -> stringResource(R.string.conversation_dock_characters)
-    is AppRoute.WritingShelf, is AppRoute.WritingBook, is AppRoute.WritingChapter,
+    is AppRoute.WritingShelf, is AppRoute.WritingBook, is AppRoute.WritingBookSettings, is AppRoute.WritingChapter,
     is AppRoute.WritingDesk -> stringResource(R.string.conversation_dock_writing)
     is AppRoute.CharacterDetail -> stringResource(R.string.ui_misc_route_character_detail)
     is AppRoute.CharacterEditor -> stringResource(R.string.ui_misc_route_character_editor)

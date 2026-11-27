@@ -108,6 +108,26 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
     fun editChapter(bookId: String, chapterId: String, transform: (WritingChapter) -> WritingChapter) =
         edit(bookId) { it.changeChapter(chapterId, transform) }
 
+    fun openChapter(bookId: String, chapterId: String, offset: Int? = null) = edit(bookId) { book ->
+        book.copy(activeChapterId = chapterId).changeChapter(chapterId) { chapter ->
+            val next = chapter.migrateParagraphDrafts()
+            if (offset == null) next else next.copy(position = WritingPosition(offset, offset, -1))
+        }
+    }
+
+    fun changeDraft(bookId: String, chapterId: String, id: String, change: (ParagraphDraft) -> ParagraphDraft) =
+        editChapter(bookId, chapterId) { chapter ->
+            chapter.copy(drafts = chapter.drafts.map { if (it.id == id) change(it) else it })
+        }
+
+    fun adoptParagraphs(bookId: String, chapterId: String, ids: Set<String>): Boolean = try {
+        editChapter(bookId, chapterId) { it.acceptParagraphs(ids) }
+        true
+    } catch (failure: IllegalArgumentException) {
+        notice = failure.message ?: "无法采用候选。"
+        false
+    }
+
     fun delete(bookId: String) {
         replaceBooks(books.filterNot { it.id == bookId })
     }
@@ -222,6 +242,7 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
         instruction: String,
         targets: List<WritingAnchor> = emptyList(),
         volumeId: String? = null,
+        replacingDraft: String? = null,
     ) {
         if (generation?.isActive == true) return
         val book = book(bookId) ?: return
@@ -237,7 +258,9 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
                 val (result, usage) = requestWritingCandidate(book, chapter, task, instruction, targets)
                 if (chapterId != null) {
                     edit(bookId) {
-                        it.changeChapter(chapterId) { current -> current.copy(candidate = result) }
+                        it.changeChapter(chapterId) { current ->
+                            current.receiveDrafts(result, requireNotNull(chapter), replacingDraft)
+                        }
                             .copy(usage = it.usage + usage)
                     }
                 } else {
@@ -304,7 +327,9 @@ internal class WritingViewModel(application: Application) : AndroidViewModel(app
                             current.copy(summary = edited.text.trim())
                         }
                         WritingTask.Rewrite, WritingTask.Draft ->
-                            current.withText(applyWritingChanges(current.text, edited), "采用 AI ${edited.task.label}前")
+                            current.withText(applyWritingChanges(current.text, edited), "采用 AI ${edited.task.label}前").let {
+                                current.withManuscript(it.text).copy(versions = it.versions)
+                            }
                         WritingTask.Handoff -> {
                             check(current.text == edited.original) { "正文已变更，请重新整理定稿。" }
                             current.copy(handoff = writingHandoff(edited.text))

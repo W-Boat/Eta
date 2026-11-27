@@ -24,10 +24,11 @@ internal fun LazyListScope.writingReview(
     onAccept: (WritingCandidate) -> Unit,
     onReject: () -> Unit,
     onRetry: (WritingCandidate) -> Unit,
+    compareInitially: Boolean = false,
 ) {
     if (candidate == null) return
     item("writing-review") {
-        WritingCandidateCard(candidate, enabled, onAccept, onReject, onRetry)
+        WritingCandidateCard(candidate, enabled, onAccept, onReject, onRetry, compareInitially)
     }
 }
 
@@ -38,13 +39,22 @@ private fun WritingCandidateCard(
     onAccept: (WritingCandidate) -> Unit,
     onReject: () -> Unit,
     onRetry: (WritingCandidate) -> Unit,
+    compareInitially: Boolean,
 ) {
     var revised by remember(candidate) { mutableStateOf(candidate.text) }
     var changes by remember(candidate) { mutableStateOf(candidate.changes) }
-    var compare by rememberSaveable { mutableStateOf(false) }
+    var compare by rememberSaveable { mutableStateOf(compareInitially) }
     WritingSection {
         Text("审阅 · ${candidate.task.label}")
         if (candidate.targets.isEmpty()) {
+            if (candidate.task == WritingTask.Extract) {
+                val evidence = remember(revised) { runCatching { parseWritingJson(revised) as? kotlinx.serialization.json.JsonObject }.getOrNull() }
+                evidence?.let {
+                    Text(it.string("title"))
+                    WritingCaption("原文证据")
+                    Text(it.string("quote"))
+                }
+            }
             if (compare && candidate.original.isNotBlank()) {
                 WritingCaption("原文")
                 WritingMarkdown(candidate.original)

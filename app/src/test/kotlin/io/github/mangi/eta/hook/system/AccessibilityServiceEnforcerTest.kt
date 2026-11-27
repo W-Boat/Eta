@@ -9,7 +9,7 @@ import org.junit.Test
 
 class AccessibilityServiceEnforcerTest {
     private val component =
-        "io.github.mangi.eta/io.github.mangi.eta.agent.accessibility.AgentAccessibilityService"
+        "${io.github.mangi.eta.BuildConfig.APPLICATION_ID}/io.github.mangi.eta.agent.accessibility.AgentAccessibilityService"
 
     @Test
     fun `adds target while preserving other accessibility services`() {

@@ -148,6 +148,8 @@ fun PageScaffold(
     overlay: @Composable () -> Unit = {},
     scrollBehavior: ScrollBehavior = MiuixScrollBehavior(),
     isContentScrolled: Boolean? = null,
+    compactTitle: Boolean = false,
+    subtitle: String = "",
     content: @Composable (
         paddingValues: PaddingValues,
         scrollBehavior: ScrollBehavior,
@@ -188,6 +190,8 @@ fun PageScaffold(
         topBar = {
             AdaptiveTopAppBar(
                 title = title,
+                subtitle = subtitle,
+                expandable = !compactTitle && !rememberIsWideScreen(),
                 backdrop = if (isTopBarGlassActive) pageBackdrop else null,
                 scrollBehavior = scrollBehavior,
                 isContentScrolled = isContentScrolled,

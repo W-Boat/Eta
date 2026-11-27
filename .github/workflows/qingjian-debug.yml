@@ -33,6 +33,14 @@ jobs:
           "-Peta.buildMetadata=${GITHUB_SHA::7}"
           :app:assembleDebug :app:testDebugUnitTest
 
+      - name: 核对 APK 安装包名
+        run: |
+          shopt -s nullglob
+          apks=(app/build/outputs/apk/debug/Eta-v*.apk)
+          [[ ${#apks[@]} -eq 1 ]]
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -n 1)"
+          "$aapt" dump badging "${apks[0]}" | grep -F "package: name='io.wboat.eta'"
+
       - name: 上传 Debug APK
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

@@ -38,11 +38,11 @@ class EntrySurfaceGuardTest {
         )
 
         assertNotNull(guard)
-        assertEquals("io.github.mangi.eta", guard?.targetPackageName)
+        assertEquals(io.github.mangi.eta.BuildConfig.APPLICATION_ID, guard?.targetPackageName)
         assertTrue(guard?.dismissOnce() == true)
         assertTrue(guard?.dismissOnce() == true)
         assertEquals(1, dismissCalls.get())
-        assertEquals(setOf("io.github.mangi.eta"), guard?.consumeScreenshotExcludedPackages())
+        assertEquals(setOf(io.github.mangi.eta.BuildConfig.APPLICATION_ID), guard?.consumeScreenshotExcludedPackages())
     }
 
     @Test
@@ -81,14 +81,14 @@ class EntrySurfaceGuardTest {
         assertEquals(
             EntrySurfaceDismissPolicy.Decision.ALREADY_GONE,
             EntrySurfaceDismissPolicy.decide(
-                targetPackageName = "io.github.mangi.eta",
+                targetPackageName = io.github.mangi.eta.BuildConfig.APPLICATION_ID,
                 visibility = PackageWindowVisibility.GONE,
             ),
         )
         assertEquals(
             EntrySurfaceDismissPolicy.Decision.SEND_BACK,
             EntrySurfaceDismissPolicy.decide(
-                targetPackageName = "io.github.mangi.eta",
+                targetPackageName = io.github.mangi.eta.BuildConfig.APPLICATION_ID,
                 visibility = PackageWindowVisibility.VISIBLE,
             ),
         )
@@ -106,7 +106,7 @@ class EntrySurfaceGuardTest {
         assertEquals(
             EntrySurfaceDismissPolicy.Decision.DEFER,
             EntrySurfaceDismissPolicy.decide(
-                targetPackageName = "io.github.mangi.eta",
+                targetPackageName = io.github.mangi.eta.BuildConfig.APPLICATION_ID,
                 visibility = PackageWindowVisibility.UNKNOWN,
             ),
         )

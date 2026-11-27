@@ -570,6 +570,9 @@ fun AgentAppRoot(
                         WritingShelfScreen(writing, { pushRoute(it) }, ::popRoute)
                     }
                     entry<AppRoute.WritingBook>(swipeDismiss = activeSwipeDismiss) { route ->
+                        WritingChapterScreen(writing, route.bookId, null, null, { pushRoute(it) }, ::popRoute)
+                    }
+                    entry<AppRoute.WritingBookSettings>(swipeDismiss = activeSwipeDismiss) { route ->
                         WritingBookScreen(writing, route.bookId, { pushRoute(it) }, ::popRoute)
                     }
                     entry<AppRoute.WritingChapter>(swipeDismiss = activeSwipeDismiss) { route ->
