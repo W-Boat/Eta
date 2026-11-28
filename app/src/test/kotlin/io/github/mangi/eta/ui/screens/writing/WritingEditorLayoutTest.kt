@@ -134,6 +134,18 @@ class WritingEditorLayoutTest {
             click(view, "创作工作台")
             assertEquals(AppRoute.WritingDesk(bookId), destination)
             val nativeEditor = allViews(view).filterIsInstance<ManuscriptEditText>().single()
+            click(view, "写作选项")
+            pump(true)
+            click(view, "Markdown 预览")
+            pump(true)
+            assertEquals(View.INVISIBLE, nativeEditor.visibility)
+            click(view, "写作选项")
+            pump(true)
+            click(view, "返回编辑")
+            pump(true)
+            assertTrue(nativeEditor === allViews(view).filterIsInstance<ManuscriptEditText>().single())
+            assertEquals(View.VISIBLE, nativeEditor.visibility)
+            assertEquals(2, nativeEditor.selectionStart)
             val now = SystemClock.uptimeMillis()
             val x = nativeEditor.totalPaddingLeft + 8 * density
             val y = nativeEditor.totalPaddingTop + 8 * density

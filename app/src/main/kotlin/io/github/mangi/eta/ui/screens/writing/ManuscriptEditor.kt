@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityManager
 import android.view.inputmethod.BaseInputConnection
@@ -40,6 +41,7 @@ internal data class ManuscriptParagraphBounds(val top: Int, val bottom: Int, val
 internal fun ManuscriptEditor(
     chapter: WritingChapter,
     source: Boolean,
+    visible: Boolean,
     markers: List<ManuscriptMarker>,
     activeParagraph: WritingAnchor?,
     selecting: Boolean,
@@ -75,6 +77,7 @@ internal fun ManuscriptEditor(
             }
         },
         update = { view ->
+            view.visibility = if (visible) View.VISIBLE else View.INVISIBLE
             view.setTextColor(foreground)
             view.updateAppearance(accent, markers, activeParagraph, selecting, source)
             if (view.text.toString() != chapter.text) view.replaceDocument(chapter.text, view.position())

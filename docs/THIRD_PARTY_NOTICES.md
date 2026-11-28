@@ -42,8 +42,6 @@ Eta 的功能图标使用 AndroidX Compose Material Icons 的 Rounded 系列，�
 
 青简使用 [Markwon](https://github.com/noties/Markwon) 的 Android 原生 Markdown 编辑器和预览。Markwon 使用 [Apache License 2.0](https://github.com/noties/Markwon/blob/master/LICENSE)，其 CommonMark 解析器采用 [BSD 2-Clause License](https://github.com/commonmark/commonmark-java/blob/main/LICENSE.txt)。
 
-青简的所见即所得模式使用 [Muya](https://github.com/marktext/muya)，也就是 [MarkText for Android](https://github.com/Renakoni/marktext-android) 所使用的 Markdown 编辑内核。依赖锁定于 `app/src/main/muya/package-lock.json`。Muya 使用 MIT License，许可全文随 APK 保存在 `muya/MUYA-LICENSE.txt`。
-
 ## 应用图标
 
 Eta 的应用图标取材自 Google [AI Edge Gallery](https://github.com/google-ai-edge/gallery) 的应用图标，转换为 VectorDrawable 并保留安全留白，通知图标为其单色变体。AI Edge Gallery 采用 [Apache License 2.0](https://github.com/google-ai-edge/gallery/blob/main/LICENSE)。

@@ -17,9 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +40,9 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.glass.Add
+import top.yukonga.miuix.kmp.icon.glass.Edit
 
 private enum class DeskPage(val label: String, val kind: WritingMaterialKind? = null) {
     Handoff("创作工作台"), Setup("作品设定"), Characters("人物", WritingMaterialKind.Character),
@@ -126,7 +126,7 @@ internal fun WritingDeskScreen(state: WritingViewModel, bookId: String, navigate
         else -> null
     }
     ScaffoldPage(title = page.label, onBack = ::previousPage, actions = {
-        if (addKind != null) TopBarActionButton(Icons.Rounded.Add, "新增${addKind.label}", onClick = { editingKind = addKind })
+        if (addKind != null) TopBarActionButton(MiuixIcons.Glass.Add, "新增${addKind.label}", onClick = { editingKind = addKind })
     }) {
         item { WritingNotice(state) }
         when (page) {
@@ -349,7 +349,7 @@ private fun WritingMaterialDetail(
 ) {
     var anchorIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     var deleting by rememberSaveable { mutableStateOf(false) }
-    ScaffoldPage(material.title, back, actions = { TopBarActionButton(Icons.Rounded.Edit, "编辑资料", onClick = edit) }) {
+    ScaffoldPage(material.title, back, actions = { TopBarActionButton(MiuixIcons.Glass.Edit, "编辑资料", onClick = edit) }) {
         item("description") {
             DeskGroup(material.kind.label) {
                 if (material.content.isNotBlank()) DeskParagraph(null, material.content)

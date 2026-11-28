@@ -23,10 +23,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoStories
-import androidx.compose.material.icons.rounded.GridView
-import androidx.compose.material.icons.rounded.ViewAgenda
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -69,7 +65,10 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.glass.GlassDialog
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.glass.Add
+import top.yukonga.miuix.kmp.icon.glass.BookOutline
+import top.yukonga.miuix.kmp.icon.glass.GridView
 import top.yukonga.miuix.kmp.icon.glass.Import
+import top.yukonga.miuix.kmp.icon.glass.ListView
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -87,7 +86,7 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
         onBack = back,
         actions = {
             TopBarActionButton(
-                icon = if (state.cards) Icons.Rounded.ViewAgenda else Icons.Rounded.GridView,
+                icon = if (state.cards) MiuixIcons.Glass.ListView else MiuixIcons.Glass.GridView,
                 contentDescription = if (state.cards) "横排书架" else "卡片书架",
                 onClick = state::toggleCards,
             )
@@ -114,7 +113,7 @@ internal fun WritingShelfScreen(state: WritingViewModel, navigate: (AppRoute) ->
             ListEmptyState(
                 title = if (query.isBlank()) "书架为空" else "没有匹配的作品",
                 summary = if (query.isBlank()) "新建小说，或导入青简的全书备份。" else "试试其他书名。",
-                icon = Icons.Rounded.AutoStories,
+                icon = MiuixIcons.Glass.BookOutline,
                 action = { if (query.isBlank()) TextButton("新建作品", onClick = { creating = true }) },
             )
         }
@@ -215,7 +214,7 @@ internal fun WritingCover(book: WritingBook, modifier: Modifier) {
         val colors = MiuixTheme.colorScheme
         Box(modifier.background(Brush.verticalGradient(listOf(colors.primary.copy(alpha = 0.13f), colors.surfaceContainerHigh))),
             contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.AutoStories, null, tint = colors.primary)
+            Icon(MiuixIcons.Glass.BookOutline, null, tint = colors.primary)
         }
     }
 }

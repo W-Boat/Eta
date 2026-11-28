@@ -4,8 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +18,8 @@ import io.github.mangi.eta.ui.components.TopBarActionButton
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.glass.AiWriting
 
 internal fun LazyListScope.writingReview(
     candidate: WritingCandidate?,
@@ -147,7 +147,7 @@ internal fun WritingFeedbackDialog(
         when (field) {
             ParagraphFeedbackField.Prompt -> {
                 SettingsTextField("改稿提示", prompt, singleLine = false) { prompt = it }
-                if (rewrite != null) TopBarActionButton(Icons.Rounded.AutoAwesome, "生成本段候选", onClick = {
+                if (rewrite != null) TopBarActionButton(MiuixIcons.Glass.AiWriting, "生成本段候选", onClick = {
                     save(WritingFeedback(anchor, prompt, annotation, latest?.vote ?: 0), null, "")
                     rewrite(prompt)
                 })

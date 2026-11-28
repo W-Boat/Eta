@@ -28,16 +28,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Comment
-import androidx.compose.material.icons.rounded.FormatListBulleted
-import androidx.compose.material.icons.rounded.Fullscreen
-import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material.icons.rounded.RateReview
-import androidx.compose.material.icons.rounded.Route
-import androidx.compose.material.icons.rounded.ThumbDown
-import androidx.compose.material.icons.rounded.ThumbUp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,11 +72,20 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.glass.AiWriting
+import top.yukonga.miuix.kmp.icon.glass.Annotation
+import top.yukonga.miuix.kmp.icon.glass.BookmarkOutline
 import top.yukonga.miuix.kmp.icon.glass.Close
+import top.yukonga.miuix.kmp.icon.glass.DislikeSelected
 import top.yukonga.miuix.kmp.icon.glass.Edit
+import top.yukonga.miuix.kmp.icon.glass.FeedbackOutline
+import top.yukonga.miuix.kmp.icon.glass.FullScreen
+import top.yukonga.miuix.kmp.icon.glass.LikeSelected
+import top.yukonga.miuix.kmp.icon.glass.Link
 import top.yukonga.miuix.kmp.icon.glass.More
 import top.yukonga.miuix.kmp.icon.glass.Ok
 import top.yukonga.miuix.kmp.icon.glass.Refresh
+import top.yukonga.miuix.kmp.icon.glass.Sidebar
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -135,8 +134,6 @@ internal fun WritingChapterScreen(
     var source by rememberSaveable { mutableStateOf(false) }
     var preview by rememberSaveable { mutableStateOf(false) }
     var livePreview by rememberSaveable { mutableStateOf(false) }
-    var rich by rememberSaveable(bookId) { mutableStateOf(false) }
-    val richSession = remember { RichManuscriptSession() }
     var selecting by rememberSaveable(chapter.id) { mutableStateOf(false) }
     var picked by remember(chapter.id) { mutableStateOf(emptySet<WritingAnchor>()) }
     var pickedDraft by rememberSaveable(chapter.id) { mutableStateOf<String?>(null) }
@@ -185,18 +182,13 @@ internal fun WritingChapterScreen(
         activeParagraph != null -> { activeParagraph = null; true }
         else -> false
     }
-    BackHandler(enabled = fullReview || selecting || contentsOpen || assistOpen || insertOpen || preview || activeParagraph != null || rich) {
-        if (!closeLayer()) richSession.flush(back)
-    }
-    fun withNativeEditor(action: () -> Unit) {
-        richSession.flush {
-            rich = false
-            preview = false
-            action()
-        }
+    BackHandler(enabled = fullReview || selecting || contentsOpen || assistOpen || insertOpen || preview || activeParagraph != null) {
+        if (!closeLayer()) back()
     }
     fun selectChapter(id: String) {
-        richSession.flush { state.openChapter(bookId, id); contentsOpen = false; preview = false }
+        state.openChapter(bookId, id)
+        contentsOpen = false
+        preview = false
     }
     fun currentParagraphs(): List<WritingAnchor> {
         val latest = state.book(bookId)?.chapter(chapterId) ?: chapter
@@ -208,16 +200,15 @@ internal fun WritingChapterScreen(
             val target = writingParagraphs(chapter).firstOrNull { it == draft.anchor } ?: return
             state.generate(bookId, chapterId, WritingTask.Rewrite, draft.instruction, listOf(target), replacingDraft = draft.id)
         } else {
-            withNativeEditor {
-                fullReview = false
-                assistOpen = false
-                contentsOpen = false
-                selecting = true
-                picked = emptySet()
-                replacingDraft = draft.id
-                instruction = draft.instruction
-                keyboard?.hide()
-            }
+            preview = false
+            fullReview = false
+            assistOpen = false
+            contentsOpen = false
+            selecting = true
+            picked = emptySet()
+            replacingDraft = draft.id
+            instruction = draft.instruction
+            keyboard?.hide()
         }
     }
     fun reviewAt(offset: Int) {
@@ -236,9 +227,10 @@ internal fun WritingChapterScreen(
         }
         openAssist()
     }
-    fun applyDrafts(ids: Set<String>) = withNativeEditor {
-        val before = state.book(bookId)?.chapter(chapterId) ?: return@withNativeEditor
+    fun applyDrafts(ids: Set<String>) {
+        val before = state.book(bookId)?.chapter(chapterId) ?: return
         if (state.adoptParagraphs(bookId, chapterId, ids)) {
+            preview = false
             history.record(before, false)
             before.drafts.filter { it.id in ids }.minOfOrNull { it.anchor.offset }?.let {
                 jump = ManuscriptJump(it)
@@ -270,8 +262,8 @@ internal fun WritingChapterScreen(
         }
         feedback = null
     }
-    fun insert(action: WritingInsert) = withNativeEditor {
-        val latest = state.book(bookId)?.chapter(chapterId) ?: return@withNativeEditor
+    fun insert(action: WritingInsert) {
+        val latest = state.book(bookId)?.chapter(chapterId) ?: return
         val anchor = activeParagraph?.takeIf { it in writingParagraphs(latest) }
         val at = if (position.start == position.end && anchor != null) WritingPosition(anchor.offset, anchor.offset) else latest.position
         val change = action.at(latest.text, at)
@@ -284,7 +276,7 @@ internal fun WritingChapterScreen(
     fun cycleReview(id: String) {
         pickedDraft = id
         activeParagraph = null
-        if (!rich) pending.firstOrNull { it.id == id && it.decision == ParagraphDecision.Pending }
+        pending.firstOrNull { it.id == id && it.decision == ParagraphDecision.Pending }
             ?.let { jump = ManuscriptJump(it.anchor.offset) }
     }
     val focusedDraft = pending.firstOrNull { it.id == pickedDraft } ?: pending.firstOrNull()
@@ -300,18 +292,18 @@ internal fun WritingChapterScreen(
         title = chapter.title,
         subtitle = wordSubtitle,
         compactTitle = true,
-        onBack = { if (!closeLayer()) richSession.flush(back) },
+        onBack = { if (!closeLayer()) back() },
         modifier = Modifier.imePadding(),
         isContentScrolled = position.scroll > 0,
         actions = {
-            TopBarActionButton(Icons.Rounded.FormatListBulleted, "目录", onClick = {
+            TopBarActionButton(MiuixIcons.Glass.Sidebar, "目录", onClick = {
                 if (!contentsOpen && !wide) assistOpen = false
                 contentsOpen = !contentsOpen
                 insertOpen = false
                 keyboard?.hide()
             }, tint = if (contentsOpen) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
             Box {
-                TopBarActionButton(Icons.Rounded.RateReview, if (pending.isEmpty()) "AI 辅助与逐段审批" else "逐段审批，${pending.size} 段待审",
+                TopBarActionButton(MiuixIcons.Glass.FeedbackOutline, if (pending.isEmpty()) "AI 辅助与逐段审批" else "逐段审批，${pending.size} 段待审",
                     onClick = { if (assistOpen) assistOpen = false else openAssist() },
                     tint = if (assistOpen) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface)
                 if (pending.isNotEmpty()) {
@@ -342,29 +334,17 @@ internal fun WritingChapterScreen(
                 val editorWidth = if (livePreview && !preview) (book.width * 2).dp else book.width.dp
                 Row(Modifier.weight(1f).widthIn(max = editorWidth).fillMaxWidth()) {
                     val paragraphBounds = nativeParagraphBounds
-                    Box(Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = "正文编辑器" }) {
-                        if (rich) key(chapterId) {
-                            RichManuscriptEditor(
-                                text = chapter.text,
-                                session = richSession,
-                                onEdit = { value ->
-                                    val latest = state.book(bookId)?.chapter(chapterId)
-                                    if (latest != null) state.writeManuscript(bookId, chapterId, value,
-                                        manuscriptEdit(latest.text, value)) { history.record(it, true) }
-                                },
-                                onUnavailable = {
-                                    rich = false
-                                    state.showNotice("所见即所得模式暂不可用，已返回原生编辑器。")
-                                },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        } else key(chapterId) {
+                    Box(Modifier.weight(1f).fillMaxHeight().semantics {
+                        contentDescription = if (preview) "Markdown 预览" else "正文编辑器"
+                    }) {
+                        key(chapterId) {
                             val markers = if (selecting) paragraphs.map { ManuscriptMarker(it.offset, it in picked) }
                             else pending.filter { it.decision == ParagraphDecision.Pending }.distinctBy { it.anchor.offset }
                                 .map { ManuscriptMarker(it.anchor.offset, assistOpen && it.id == focusedDraft?.id) }
                             ManuscriptEditor(
                                 chapter = chapter,
                                 source = source,
+                                visible = !preview,
                                 markers = markers,
                                 activeParagraph = visibleParagraph ?: focusedDraft?.takeIf {
                                     assistOpen && it.decision == ParagraphDecision.Pending
@@ -397,14 +377,14 @@ internal fun WritingChapterScreen(
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                        if (!rich && !preview && !selecting && !insertOpen && visibleParagraph != null && paragraphBounds != null) {
+                        if (!preview && !selecting && !insertOpen && visibleParagraph != null && paragraphBounds != null) {
                             val existing = chapter.feedback.firstOrNull { it.anchor.offset == visibleParagraph.offset && !it.anchor.detached }
                             WritingParagraphMenu(paragraphBounds, Modifier.matchParentSize()) {
                                 TopBarActionButton(MiuixIcons.Glass.Edit, "编辑本段", onClick = { paragraphEdit = visibleParagraph })
-                                TopBarActionButton(Icons.Rounded.AutoAwesome, "本段改稿提示", onClick = {
+                                TopBarActionButton(MiuixIcons.Glass.AiWriting, "本段改稿提示", onClick = {
                                     feedback = visibleParagraph to ParagraphFeedbackField.Prompt
                                 })
-                                for ((vote, icon) in listOf(1 to Icons.Rounded.ThumbUp, -1 to Icons.Rounded.ThumbDown)) {
+                                for ((vote, icon) in listOf(1 to MiuixIcons.Glass.LikeSelected, -1 to MiuixIcons.Glass.DislikeSelected)) {
                                     val selected = existing?.vote == vote
                                     TopBarActionButton(icon, if (vote == 1) "赞" else "踩",
                                         modifier = Modifier.semantics { this.selected = selected },
@@ -415,22 +395,20 @@ internal fun WritingChapterScreen(
                                             ), null, "")
                                         })
                                 }
-                                TopBarActionButton(Icons.Rounded.Comment, "本段批注", onClick = {
+                                TopBarActionButton(MiuixIcons.Glass.Annotation, "本段批注", onClick = {
                                     feedback = visibleParagraph to ParagraphFeedbackField.Annotation
                                 })
-                                TopBarActionButton(Icons.Rounded.Route, "本段伏笔", onClick = {
+                                TopBarActionButton(MiuixIcons.Glass.BookmarkOutline, "本段伏笔", onClick = {
                                     feedback = visibleParagraph to ParagraphFeedbackField.Foreshadow
                                 })
-                                TopBarActionButton(Icons.Rounded.Link, "本段相关", onClick = { related = visibleParagraph })
+                                TopBarActionButton(MiuixIcons.Glass.Link, "本段相关", onClick = { related = visibleParagraph })
                             }
                         }
                         if (preview) {
-                            Box(Modifier.fillMaxSize().background(colors.surface).clickable(enabled = false) {}) {
-                                WritingMarkdown(chapter.text, Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp))
-                            }
+                            WritingMarkdown(chapter.text, Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp))
                         }
                     }
-                    if (livePreview && !preview && !rich && viewportWidth - startInset - endInset >= 620.dp) {
+                    if (livePreview && !preview && viewportWidth - startInset - endInset >= 620.dp) {
                         WritingMarkdown(chapter.text, Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(24.dp))
                     }
                 }
@@ -440,7 +418,7 @@ internal fun WritingChapterScreen(
                             selecting = false; picked = emptySet(); replacingDraft = null
                         })
                         Text("已选 ${picked.size} 段", Modifier.padding(horizontal = 6.dp))
-                        TopBarActionButton(Icons.Rounded.AutoAwesome, "改写所选段落", enabled = picked.isNotEmpty(), onClick = {
+                        TopBarActionButton(MiuixIcons.Glass.AiWriting, "改写所选段落", enabled = picked.isNotEmpty(), onClick = {
                             selecting = false
                             openAssist()
                         })
@@ -462,7 +440,7 @@ internal fun WritingChapterScreen(
                             onOpenDesk = {
                                 insertOpen = false
                                 keyboard?.hide()
-                                richSession.flush { navigate(AppRoute.WritingDesk(bookId)) }
+                                navigate(AppRoute.WritingDesk(bookId))
                             },
                         )
                     }
@@ -480,7 +458,7 @@ internal fun WritingChapterScreen(
                         item("book") {
                             val facts = "${book.volumes.size} 卷 · ${book.chapters.size} 章"
                             WritingEntry(bookTitle, if (state.saving) "$facts · 正在保存" else "$facts · 书籍设置与导出") {
-                                richSession.flush { navigate(AppRoute.WritingBookSettings(bookId)) }
+                                navigate(AppRoute.WritingBookSettings(bookId))
                             }
                         }
                         book.volumes.forEach { volume ->
@@ -507,7 +485,7 @@ internal fun WritingChapterScreen(
                             Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(if (count == 0) "本章没有待审内容" else "$count 项待审", Modifier.weight(1f),
                                     style = MiuixTheme.textStyles.footnote1)
-                                if (count > 0) TopBarActionButton(Icons.Rounded.Fullscreen, "全屏对照", onClick = {
+                                if (count > 0) TopBarActionButton(MiuixIcons.Glass.FullScreen, "全屏对照", onClick = {
                                     fullReview = true
                                     keyboard?.hide()
                                 })
@@ -542,7 +520,7 @@ internal fun WritingChapterScreen(
                                         val availableParagraphs = currentParagraphs().toHashSet()
                                         picked.filter { it in availableParagraphs }.sortedBy { it.offset }
                                     }
-                                val target = paragraphAt(position.start).takeUnless { rich }
+                                val target = paragraphAt(position.start)
                                 if (range.isNotEmpty() || target != null) WritingEntry(
                                     if (range.isNotEmpty()) "改写所选 ${range.size} 段" else "改写光标所在段",
                                 ) {
@@ -557,7 +535,10 @@ internal fun WritingChapterScreen(
                                     }
                                 }
                                 WritingEntry("在正文多选段落") {
-                                    withNativeEditor { assistOpen = false; selecting = true; keyboard?.hide() }
+                                    preview = false
+                                    assistOpen = false
+                                    selecting = true
+                                    keyboard?.hide()
                                 }
                                 if (target != null) WritingEntry("本段批注") {
                                     feedback = target to ParagraphFeedbackField.Annotation
@@ -567,20 +548,20 @@ internal fun WritingChapterScreen(
                         if (state.generating == null) item("chapter-workflow") {
                             DeskGroup("章节任务") {
                                 WritingEntry("生成摘要") {
-                                    richSession.flush { state.generate(bookId, chapterId, WritingTask.Summary, instruction) }
+                                    state.generate(bookId, chapterId, WritingTask.Summary, instruction)
                                 }
                                 if (chapter.summary.isNotBlank()) WritingEntry("根据摘要生成初稿") {
-                                    richSession.flush { state.generate(bookId, chapterId, WritingTask.Draft, instruction) }
+                                        state.generate(bookId, chapterId, WritingTask.Draft, instruction)
                                 }
                                 if (chapter.text.isNotBlank()) {
                                     WritingEntry("整章改稿") {
-                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Rewrite, instruction) }
+                                        state.generate(bookId, chapterId, WritingTask.Rewrite, instruction)
                                     }
                                     WritingEntry("从章内提取资料") {
-                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Extract, instruction) }
+                                        state.generate(bookId, chapterId, WritingTask.Extract, instruction)
                                     }
                                     WritingEntry("生成定稿交接") {
-                                        richSession.flush { state.generate(bookId, chapterId, WritingTask.Handoff, instruction) }
+                                        state.generate(bookId, chapterId, WritingTask.Handoff, instruction)
                                     }
                                 }
                             }
@@ -622,21 +603,11 @@ internal fun WritingChapterScreen(
     }
 
     if (menu) WritingDialog("写作选项", { menu = false }) {
-        WritingEntry(if (rich) "切换到原生编辑器" else "所见即所得编辑", "Muya Markdown 内核") {
-            menu = false
-            if (rich) withNativeEditor {} else {
-                keyboard?.hide()
-                rich = true
-                preview = false
-                livePreview = false
-                selecting = false
-            }
-        }
         WritingEntry(if (preview) "返回编辑" else "Markdown 预览") { menu = false; preview = !preview; keyboard?.hide() }
-        if (!rich) WritingEntry(if (livePreview) "关闭同屏预览" else "同屏预览（宽屏）") {
+        WritingEntry(if (livePreview) "关闭同屏预览" else "同屏预览（宽屏）") {
             menu = false; livePreview = !livePreview; preview = false
         }
-        if (!rich) WritingEntry(if (source) "Markdown 高亮" else "显示源码") { menu = false; source = !source }
+        WritingEntry(if (source) "Markdown 高亮" else "显示源码") { menu = false; source = !source }
         if (history.canUndo) WritingEntry("撤销") { menu = false; history.undo(chapter)?.let(::restore) }
         if (history.canRedo) WritingEntry("重做") { menu = false; history.redo(chapter)?.let(::restore) }
         WritingEntry("版本历史") { menu = false; versions = true }
@@ -727,7 +698,7 @@ internal fun WritingChapterScreen(
             note?.prompt?.takeIf(String::isNotBlank)?.let { WritingCaption("改稿提示"); Text(it) }
             note?.annotation?.takeIf(String::isNotBlank)?.let { WritingCaption("批注"); Text(it) }
             links.forEach { item -> WritingCaption(item.kind.label); Text(item.title) }
-            if (draft != null) TopBarActionButton(Icons.Rounded.RateReview, "查看本段候选", onClick = {
+            if (draft != null) TopBarActionButton(MiuixIcons.Glass.FeedbackOutline, "查看本段候选", onClick = {
                 related = null
                 reviewAt(anchor.offset)
             })
@@ -818,11 +789,11 @@ private fun LazyListScope.paragraphReviews(
 
 @Composable
 private fun ReviewExcerpt(text: String, start: Int, end: Int, highlight: Color) {
-    androidx.compose.foundation.text.BasicText(buildAnnotatedString {
+    Text(buildAnnotatedString {
         append(text.substring(0, start))
         withStyle(SpanStyle(background = highlight)) { append(text.substring(start, end)) }
         append(text.substring(end))
-    }, style = MiuixTheme.textStyles.body1.copy(color = MiuixTheme.colorScheme.onSurface))
+    }, style = MiuixTheme.textStyles.body1, color = MiuixTheme.colorScheme.onSurface)
 }
 
 @Composable

@@ -1,23 +1,18 @@
 package io.github.mangi.eta.ui.screens.writing
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.FlowRowScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.FormatBold
 import androidx.compose.material.icons.rounded.FormatItalic
-import androidx.compose.material.icons.rounded.FormatListBulleted
-import androidx.compose.material.icons.rounded.FormatQuote
-import androidx.compose.material.icons.rounded.HorizontalRule
 import androidx.compose.material.icons.rounded.Title
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,10 +32,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import io.github.mangi.eta.ui.components.TopBarActionButton
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.VerticalDivider
+import top.yukonga.miuix.kmp.glass.GlassFloatingToolbar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.glass.Add
 import top.yukonga.miuix.kmp.icon.glass.Close
-import top.yukonga.miuix.kmp.squircle.squircleClip
+import top.yukonga.miuix.kmp.icon.glass.GridView
+import top.yukonga.miuix.kmp.icon.glass.ListView
+import top.yukonga.miuix.kmp.icon.glass.QuotationMarks
+import top.yukonga.miuix.kmp.icon.glass.Remove
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -63,22 +63,19 @@ internal fun WritingEditorDock(
                 TopBarActionButton(MiuixIcons.Glass.Close, "关闭快捷插入", onClick = onToggleInsert)
             }
         }
-        Row(
-            Modifier.squircleClip(28.dp).background(MiuixTheme.colorScheme.surfaceContainer)
-                .padding(horizontal = 5.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TopBarActionButton(
-                MiuixIcons.Glass.Add, "快捷插入", onClick = onToggleInsert,
-                modifier = Modifier.semantics {
-                    role = Role.Button
-                    stateDescription = if (expanded) "已展开" else "已收起"
-                },
-                tint = if (expanded) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-            )
-            Box(Modifier.padding(horizontal = 4.dp).height(20.dp).width(1.dp)
-                .background(MiuixTheme.colorScheme.outline))
-            TopBarActionButton(Icons.Rounded.Dashboard, "创作工作台", onClick = onOpenDesk)
+        GlassFloatingToolbar(backdrop = null, outSidePadding = PaddingValues(0.dp)) {
+            Row(Modifier.padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                TopBarActionButton(
+                    MiuixIcons.Glass.Add, "快捷插入", onClick = onToggleInsert,
+                    modifier = Modifier.semantics {
+                        role = Role.Button
+                        stateDescription = if (expanded) "已展开" else "已收起"
+                    },
+                    tint = if (expanded) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                )
+                VerticalDivider(Modifier.padding(horizontal = 4.dp).height(20.dp))
+                TopBarActionButton(MiuixIcons.Glass.GridView, "创作工作台", onClick = onOpenDesk)
+            }
         }
     }
 }
@@ -114,9 +111,9 @@ internal enum class WritingInsert(val label: String, val icon: ImageVector) {
     Heading("标题", Icons.Rounded.Title),
     Bold("加粗", Icons.Rounded.FormatBold),
     Italic("斜体", Icons.Rounded.FormatItalic),
-    Quote("引用", Icons.Rounded.FormatQuote),
-    ListItem("列表", Icons.Rounded.FormatListBulleted),
-    Scene("场景分隔", Icons.Rounded.HorizontalRule),
+    Quote("引用", MiuixIcons.Glass.QuotationMarks),
+    ListItem("列表", MiuixIcons.Glass.ListView),
+    Scene("场景分隔", MiuixIcons.Glass.Remove),
 }
 
 internal data class WritingInsertion(val start: Int, val end: Int, val replacement: String, val caret: Int)
