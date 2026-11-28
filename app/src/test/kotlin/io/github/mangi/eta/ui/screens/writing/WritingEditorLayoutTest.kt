@@ -97,7 +97,10 @@ class WritingEditorLayoutTest {
             scope.launch { recomposer.runRecomposeAndApplyChanges() }
             view.setParentCompositionContext(recomposer)
             view.setContent {
-                AgentAppTheme(appearance = AppearanceSettings(themeMode = theme)) {
+                AgentAppTheme(
+                    appearance = AppearanceSettings(themeMode = theme),
+                    provideGlassHost = true,
+                ) {
                     WritingChapterScreen(model, bookId, null, null, { destination = it }, {})
                 }
             }
